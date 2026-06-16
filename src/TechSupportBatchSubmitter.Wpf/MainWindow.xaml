@@ -232,7 +232,7 @@
                     </StackPanel>
                 </StackPanel>
                 <StackPanel HorizontalAlignment="Right" VerticalAlignment="Center">
-                    <TextBlock x:Name="SessionStatusText" Text="正在初始化官方登录页面"
+                    <TextBlock x:Name="SessionStatusText" Text="正在初始化登录页面"
                                Foreground="#D88600" HorizontalAlignment="Right"/>
                     <TextBlock x:Name="CurrentUserText" Foreground="{StaticResource MutedBrush}"
                                Margin="0,4,0,0" HorizontalAlignment="Right"/>
@@ -257,7 +257,7 @@
                             BorderThickness="0,0,0,1" Padding="12">
                         <StackPanel>
                             <Grid>
-                                <TextBlock Text="官方登录页面" FontSize="16" FontWeight="SemiBold"
+                                <TextBlock Text="登录页面" FontSize="16" FontWeight="SemiBold"
                                            VerticalAlignment="Center"/>
                                 <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
                                     <Button Content="最小化"

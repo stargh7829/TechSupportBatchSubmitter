@@ -28,7 +28,7 @@
     <Platforms>x64</Platforms>
     <AssemblyName>TechSupportBatchSubmitter</AssemblyName>
     <Product>技术支持批量提交工具</Product>
-    <Company>浙江天正思维信息技术有限公司</Company>
+    <Company>Internal Tools</Company>
     <Version>1.3.4</Version>
   </PropertyGroup>
 

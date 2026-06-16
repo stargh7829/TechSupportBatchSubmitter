@@ -105,11 +105,11 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
                 const body = String(document.body?.innerText || "");
                 const supportReady =
                     url.includes("172.18.75.6:18005/xzsw") &&
-                    (title.includes("杭州人社技术支持平台") || body.includes("技术支持"));
+                    body.includes("技术支持");
                 const workbenchReady =
                     url.includes("172.18.75.21") &&
-                    (title.includes("杭州人社工作台") || body.includes("你好！"));
-                const supportName = body.match(/天正公司\s*-\s*([^\s]+)/)?.[1] || "";
+                    body.includes("你好！");
+                const supportName = body.match(/公司\s*-\s*([^\s]+)/)?.[1] || "";
                 const workbenchName = body.match(/你好！\s*([^\s]+)/)?.[1] || "";
                 return {
                     ok: true,
@@ -118,10 +118,10 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
                         isAuthenticated: supportReady || workbenchReady,
                         displayName: supportName || workbenchName,
                         message: supportReady
-                            ? "技术支持平台已登录"
+                            ? "技术支持系统已登录"
                             : workbenchReady
-                                ? "工作台已登录，请点击“技术支持”进入平台"
-                                : "请在左侧官方页面完成登录"
+                                ? "工作台已登录，请点击“技术支持”进入系统"
+                                : "请在左侧登录页面完成登录"
                     }
                 };
             })()
@@ -183,7 +183,7 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
 
                 function detectSessionTimeout(text, url) {
                     if (url?.includes("172.18.75.21") || text.includes('"sessionstatus":"timeout"')) {
-                        return { ok: false, kind: "session", error: "技术支持平台登录已失效" };
+                        return { ok: false, kind: "session", error: "技术支持系统登录已失效" };
                     }
                     return null;
                 }
@@ -229,7 +229,7 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
                     });
                     const text = await response.text();
                     if (response.url?.includes("172.18.75.21") || text.includes('"sessionstatus":"timeout"')) {
-                        return { ok: false, kind: "session", error: "技术支持平台登录已失效" };
+                        return { ok: false, kind: "session", error: "技术支持系统登录已失效" };
                     }
                     if (!response.ok) {
                         return { ok: false, kind: "unknown", error: `保存请求返回 HTTP ${response.status}` };
@@ -279,7 +279,7 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
                     });
                     const html = await response.text();
                     if (response.url?.includes("172.18.75.21") || html.includes('"sessionstatus":"timeout"')) {
-                        return { ok: false, kind: "session", error: "技术支持平台登录已失效" };
+                        return { ok: false, kind: "session", error: "技术支持系统登录已失效" };
                     }
                     if (!response.ok) {
                         return { ok: false, kind: "protocol", error: `核验请求失败：HTTP ${response.status}` };
@@ -391,7 +391,7 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
                 try {
                     const first = await loadPage(0);
                     if (first.sessionExpired) {
-                        return { ok: false, kind: "session", error: "技术支持平台登录已失效" };
+                        return { ok: false, kind: "session", error: "技术支持系统登录已失效" };
                     }
                     const total = Number(first.total || 0);
                     all.push(...(Array.isArray(first.data) ? first.data : []));
@@ -399,7 +399,7 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
                     for (let page = 1; page < pages; page++) {
                         const next = await loadPage(page);
                         if (next.sessionExpired) {
-                            return { ok: false, kind: "session", error: "技术支持平台登录已失效" };
+                            return { ok: false, kind: "session", error: "技术支持系统登录已失效" };
                         }
                         all.push(...(Array.isArray(next.data) ? next.data : []));
                     }
@@ -566,7 +566,7 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
                 try {
                     const loaded = await readSolutionForm();
                     if (loaded.sessionExpired) {
-                        return { ok: false, kind: "session", error: "技术支持平台登录已失效" };
+                        return { ok: false, kind: "session", error: "技术支持系统登录已失效" };
                     }
                     if (!loaded.html) {
                         return {
@@ -752,7 +752,7 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
                     });
                     const text = await response.text();
                     if (response.url?.includes("172.18.75.21") || text.includes('"sessionstatus":"timeout"')) {
-                        return { ok: false, kind: "session", error: "技术支持平台登录已失效" };
+                        return { ok: false, kind: "session", error: "技术支持系统登录已失效" };
                     }
                     const result = JSON.parse(text);
                     const list = Array.isArray(result.nameList) ? result.nameList : [];
@@ -821,7 +821,7 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
                     });
                     const text = await response.text();
                     if (response.url?.includes("172.18.75.21") || text.includes('"sessionstatus":"timeout"')) {
-                        return { ok: false, kind: "session", error: "技术支持平台登录已失效" };
+                        return { ok: false, kind: "session", error: "技术支持系统登录已失效" };
                     }
                     const source = JSON.parse(text);
                     const all = [];
@@ -914,7 +914,7 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
         }
         catch (Exception ex)
         {
-            throw new PlatformProtocolException("无法在技术支持平台页面执行请求。", ex);
+            throw new PlatformProtocolException("无法在技术支持系统页面执行请求。", ex);
         }
 
         string? json = null;

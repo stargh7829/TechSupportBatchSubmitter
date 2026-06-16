@@ -112,7 +112,7 @@ public partial class MainWindow : Window
 
             await RefreshHistoryAsync(CancellationToken.None);
             client.NavigateToWorkbench();
-            SessionStatusText.Text = "请在左侧官方页面完成登录";
+            SessionStatusText.Text = "请在左侧登录页面完成登录";
             FooterStatusText.Text = "程序已就绪";
         }
         catch (WebView2RuntimeNotFoundException)
@@ -287,7 +287,7 @@ public partial class MainWindow : Window
 
         var result = ShowConfirm(
             "确认真实提交",
-            $"即将向真实技术支持平台提交 {count} 条记录。\n" +
+            $"即将向技术支持系统提交 {count} 条记录。\n" +
             $"第一条立即提交，之后每条{DescribeInterval(submissionInterval)}。\n\n确认开始吗？");
         if (result)
         {
@@ -340,7 +340,7 @@ public partial class MainWindow : Window
     private void OpenWorkbench_Click(object sender, RoutedEventArgs e)
     {
         (_platformClient as WebViewTicketPlatformClient)?.NavigateToWorkbench();
-        SessionStatusText.Text = "请在官方工作台完成登录";
+        SessionStatusText.Text = "请在左侧登录页面完成登录";
     }
 
     private async void OpenSupport_Click(object sender, RoutedEventArgs e)
@@ -352,12 +352,12 @@ public partial class MainWindow : Window
 
         try
         {
-            SessionStatusText.Text = "正在通过工作台 SSO 打开技术支持平台";
+            SessionStatusText.Text = "正在打开技术支持系统";
             await client.OpenSupportPlatformAsync();
         }
         catch (Exception ex)
         {
-            AddLog($"打开技术支持平台失败：{ex.Message}", true);
+            AddLog($"打开技术支持系统失败：{ex.Message}", true);
             ShowError("打开失败", ex.Message);
         }
     }
@@ -1096,7 +1096,7 @@ public partial class MainWindow : Window
         if (!status.IsSupportPlatformReady)
         {
             throw new PlatformSessionExpiredException(
-                "技术支持平台尚未登录。请先在左侧完成工作台登录并进入技术支持平台。");
+                "技术支持系统尚未登录。请先在左侧完成登录并进入技术支持系统。");
         }
     }
 
