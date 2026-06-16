@@ -1,0 +1,11 @@
+.tools/
+**/bin/
+**/obj/
+artifacts/
+*.user
+*.suo
+*.backup_*.xlsx
+*.tmp.xlsx
+*.xlsx
+*.xls
+*.xlsm
