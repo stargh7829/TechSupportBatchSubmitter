@@ -8,6 +8,16 @@ namespace TechSupportBatchSubmitter.Tests;
 public sealed class TicketCloseQueueTests
 {
     [Fact]
+    public void DefaultCloseSettings_UseVerifiedDataQuestionCause()
+    {
+        Assert.Equal("21", CloseTicketSettings.Default.CauseTypeValue);
+        Assert.Equal("数据疑问", CloseTicketSettings.Default.CauseTypeName);
+        Assert.Equal("数据 / 数据疑问", CloseTicketSettings.Default.CauseTypePath);
+        Assert.Equal("2", CloseTicketSettings.Default.SolveTypeValue);
+        Assert.Equal("修改数据", CloseTicketSettings.Default.SolveTypeName);
+    }
+
+    [Fact]
     public async Task RunAsync_WaitsFiveSecondsAfterFirstVerification()
     {
         var clock = new FakeClock(new DateTimeOffset(2026, 6, 15, 0, 0, 0, TimeSpan.Zero));

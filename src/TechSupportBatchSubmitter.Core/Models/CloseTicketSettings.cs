@@ -17,8 +17,8 @@ public sealed record CloseTicketSettings(
 {
     public static CloseTicketSettings Default { get; } = new(
         "21",
-        "其它",
-        "其它",
+        "数据疑问",
+        "数据 / 数据疑问",
         "已处理",
         "2",
         "修改数据",
