@@ -46,60 +46,75 @@
             </Setter>
         </Style>
     </Window.Resources>
-    <Border Background="#FFFCFB"
-            BorderBrush="#F2D5CE"
-            BorderThickness="1"
-            CornerRadius="18"
-            Padding="18">
-        <Grid>
-            <Grid.RowDefinitions>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-                <RowDefinition Height="Auto"/>
-            </Grid.RowDefinitions>
-            <Grid.ColumnDefinitions>
-                <ColumnDefinition Width="64"/>
-                <ColumnDefinition Width="*"/>
-            </Grid.ColumnDefinitions>
+    <Grid>
+        <Polygon Points="38,21 52,0 66,22"
+                 Fill="#2E2A32"
+                 Stroke="#2E2A32"
+                 StrokeThickness="1"/>
+        <Polygon Points="42,21 52,7 62,22"
+                 Fill="#FF9DAF"/>
+        <Polygon Points="394,22 408,0 422,21"
+                 Fill="#2E2A32"
+                 Stroke="#2E2A32"
+                 StrokeThickness="1"/>
+        <Polygon Points="398,22 408,7 418,21"
+                 Fill="#FF9DAF"/>
+        <Border Background="#FFFCFB"
+                BorderBrush="#2E2A32"
+                BorderThickness="1.2"
+                CornerRadius="12"
+                Padding="18"
+                Margin="0,16,0,0">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                    <RowDefinition Height="Auto"/>
+                </Grid.RowDefinitions>
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="64"/>
+                    <ColumnDefinition Width="*"/>
+                </Grid.ColumnDefinitions>
 
-            <Border Width="54" Height="54" CornerRadius="16"
-                    Background="#FFF1EE"
-                    BorderBrush="#F2D5CE"
-                    BorderThickness="1">
-                <Image Source="Assets/CatMascot.png" Stretch="Uniform" Margin="3"/>
-            </Border>
+                <Border Width="54" Height="54" CornerRadius="14"
+                        Background="#FFF1EE"
+                        BorderBrush="#F2D5CE"
+                        BorderThickness="1">
+                    <Image Source="Assets/CatMascot.png" Stretch="Uniform" Margin="3"/>
+                </Border>
 
-            <StackPanel Grid.Column="1" Margin="14,2,0,0">
-                <TextBlock x:Name="TitleText"
-                           FontSize="17"
-                           FontWeight="Bold"
-                           Foreground="#2E2A32"/>
-                <TextBlock x:Name="MessageText"
-                           Margin="0,8,0,0"
-                           Foreground="#5F5664"
-                           TextWrapping="Wrap"
-                           LineHeight="22"/>
-            </StackPanel>
+                <StackPanel Grid.Column="1" Margin="14,2,0,0">
+                    <TextBlock x:Name="TitleText"
+                               FontSize="17"
+                               FontWeight="Bold"
+                               Foreground="#2E2A32"/>
+                    <TextBlock x:Name="MessageText"
+                               Margin="0,8,0,0"
+                               Foreground="#5F5664"
+                               TextWrapping="Wrap"
+                               LineHeight="22"/>
+                </StackPanel>
 
-            <StackPanel Grid.Row="2" Grid.ColumnSpan="2"
-                        Orientation="Horizontal"
-                        HorizontalAlignment="Right"
-                        Margin="0,18,0,0">
-                <Button x:Name="CancelButton"
-                        Content="取消"
-                        MinWidth="86"
-                        Padding="14,7"
-                        Margin="0,0,8,0"
-                        Click="CancelButton_Click"/>
-                <Button x:Name="OkButton"
-                        Content="确定"
-                        MinWidth="86"
-                        Padding="14,7"
-                        Background="#FF7B9C"
-                        Foreground="White"
-                        BorderBrush="#FF7B9C"
-                        Click="OkButton_Click"/>
-            </StackPanel>
-        </Grid>
-    </Border>
+                <StackPanel Grid.Row="2" Grid.ColumnSpan="2"
+                            Orientation="Horizontal"
+                            HorizontalAlignment="Right"
+                            Margin="0,18,0,0">
+                    <Button x:Name="CancelButton"
+                            Content="取消"
+                            MinWidth="86"
+                            Padding="14,7"
+                            Margin="0,0,8,0"
+                            Click="CancelButton_Click"/>
+                    <Button x:Name="OkButton"
+                            Content="确定"
+                            MinWidth="86"
+                            Padding="14,7"
+                            Background="#FF7B9C"
+                            Foreground="White"
+                            BorderBrush="#FF7B9C"
+                            Click="OkButton_Click"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
 </Window>

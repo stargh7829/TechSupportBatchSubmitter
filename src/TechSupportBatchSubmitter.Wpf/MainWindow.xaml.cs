@@ -1,7 +1,11 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Diagnostics;
 using System.IO;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Input;
+using System.Windows.Threading;
 using Microsoft.Win32;
 using Microsoft.Web.WebView2.Core;
 using TechSupportBatchSubmitter.Core.Exceptions;
@@ -30,6 +34,9 @@ public partial class MainWindow : Window
     private readonly ObservableCollection<PendingTicketRow> _excelCloseTickets = [];
     private readonly ObservableCollection<SubmissionHistoryRecord> _submissionHistory = [];
     private readonly ObservableCollection<CloseHistoryRecord> _closeHistory = [];
+    private readonly DiagnosticPackageExporter _diagnosticExporter = new();
+    private readonly VersionNoticeService _versionNoticeService = new();
+    private readonly AppSettings _settings;
 
     private SafeFileLogger? _logger;
     private ITicketPlatformClient? _platformClient;
@@ -50,15 +57,18 @@ public partial class MainWindow : Window
     private CloseQueueSource _activeCloseSource = CloseQueueSource.PendingQuery;
     private bool _loginPaneExpanded;
     private bool _loginPaneCollapsed;
+    private bool _pendingDetailColumnsVisible;
+    private bool _excelCloseDetailColumnsVisible;
 
-    private static readonly DelaySchedule DefaultSubmissionInterval =
-        new(TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(90));
-    private static readonly DelaySchedule DefaultCloseInterval =
-        new(TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(10));
+    private const double DetailTableRightPadding = 240;
+
+    private DelaySchedule DefaultSubmissionInterval => _settings.CreateSubmissionDelaySchedule();
+    private DelaySchedule DefaultCloseInterval => _settings.CreateCloseDelaySchedule();
 
     public MainWindow()
     {
         ApplicationPaths.EnsureCreated();
+        _settings = AppSettings.LoadOrCreate(ApplicationPaths.SettingsPath);
         _logger = new SafeFileLogger(ApplicationPaths.LogDirectory);
         InitializeComponent();
         InitializeTrayIcon();
@@ -83,7 +93,7 @@ public partial class MainWindow : Window
             var runtimeVersion = CoreWebView2Environment.GetAvailableBrowserVersionString();
             AddLog($"WebView2 Runtime {runtimeVersion} 已就绪");
 
-            var client = new WebViewTicketPlatformClient(PlatformWebView);
+            var client = new WebViewTicketPlatformClient(PlatformWebView, _settings);
             await client.InitializeAsync(ApplicationPaths.WebViewUserDataDirectory);
             client.SessionExpired += PlatformClient_SessionExpired;
             _platformClient = client;
@@ -114,6 +124,8 @@ public partial class MainWindow : Window
             client.NavigateToWorkbench();
             SessionStatusText.Text = "请在左侧登录页面完成登录";
             FooterStatusText.Text = "程序已就绪";
+            AddLog($"已加载外置配置：{ApplicationPaths.SettingsPath}");
+            await CheckVersionNoticeAsync(CancellationToken.None);
         }
         catch (WebView2RuntimeNotFoundException)
         {
@@ -142,6 +154,51 @@ public partial class MainWindow : Window
 
         _trayMenu?.Dispose();
         _trayIconImage?.Dispose();
+    }
+
+    private void TitleBar_MouseLeftButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        if (e.ClickCount == 2)
+        {
+            ToggleWindowMaximized();
+            return;
+        }
+
+        if (e.ButtonState == MouseButtonState.Pressed)
+        {
+            DragMove();
+        }
+    }
+
+    private void MinimizeWindow_Click(object sender, RoutedEventArgs e)
+    {
+        WindowState = WindowState.Minimized;
+    }
+
+    private void MaximizeWindow_Click(object sender, RoutedEventArgs e)
+    {
+        ToggleWindowMaximized();
+    }
+
+    private void CloseWindow_Click(object sender, RoutedEventArgs e)
+    {
+        Close();
+    }
+
+    private void Window_StateChanged(object? sender, EventArgs e)
+    {
+        if (MaximizeWindowButton is not null)
+        {
+            MaximizeWindowButton.Content = WindowState == WindowState.Maximized ? "❐" : "□";
+            MaximizeWindowButton.ToolTip = WindowState == WindowState.Maximized ? "还原" : "最大化";
+        }
+    }
+
+    private void ToggleWindowMaximized()
+    {
+        WindowState = WindowState == WindowState.Maximized
+            ? WindowState.Normal
+            : WindowState.Maximized;
     }
 
     private void InitializeTrayIcon()
@@ -175,6 +232,24 @@ public partial class MainWindow : Window
             Visible = true
         };
         _trayIcon.DoubleClick += (_, _) => RestoreFromTray();
+    }
+
+    private async Task CheckVersionNoticeAsync(CancellationToken cancellationToken)
+    {
+        var notice = await _versionNoticeService.CheckAsync(_settings, cancellationToken);
+        if (notice is null)
+        {
+            return;
+        }
+
+        var message = $"当前版本：{notice.CurrentVersion}\n最新版本：{notice.LatestVersion}";
+        if (!string.IsNullOrWhiteSpace(notice.ReleaseNotes))
+        {
+            message += $"\n\n{notice.ReleaseNotes}";
+        }
+
+        AddLog($"检测到新版本：{notice.LatestVersion}");
+        ShowInfo("发现新版本", message);
     }
 
     private void RestoreFromTray()
@@ -220,6 +295,12 @@ public partial class MainWindow : Window
         _resolvedTickets = new Dictionary<string, ResolvedTicket>();
         _validated = false;
         AddLog($"已自动读取工作表“{_workbook.WorksheetName}”，共 {_workbook.Rows.Count} 条");
+        AddLog($"模板校验摘要：{_workbook.Diagnostics.ToSummary()}");
+        foreach (var warning in _workbook.Diagnostics.Warnings)
+        {
+            AddLog(warning, true);
+        }
+
         if (!string.IsNullOrWhiteSpace(_workbook.BackupPath))
         {
             AddLog($"已自动创建 Excel 备份：{Path.GetFileName(_workbook.BackupPath)}");
@@ -466,6 +547,129 @@ public partial class MainWindow : Window
         TogglePendingAdvancedButton.Content = expand ? "收起条件" : "更多条件";
     }
 
+    private void TogglePendingDetailColumns_Click(object sender, RoutedEventArgs e)
+    {
+        _pendingDetailColumnsVisible = !_pendingDetailColumnsVisible;
+        SetColumnVisibility(
+            _pendingDetailColumnsVisible,
+            PendingTypeColumn,
+            PendingSystemColumn,
+            PendingAssigneeColumn,
+            PendingHandlerColumn,
+            PendingApplicantColumn,
+            PendingCreateTimeColumn,
+            PendingLatestReplyTimeColumn,
+            PendingCloseMessageColumn);
+        SetDetailTableWidth(
+            PendingTicketHorizontalScroller,
+            PendingTicketGrid,
+            _pendingDetailColumnsVisible);
+        if (_pendingDetailColumnsVisible)
+        {
+            Dispatcher.BeginInvoke(
+                () => SetDetailTableWidth(PendingTicketHorizontalScroller, PendingTicketGrid, true),
+                DispatcherPriority.Loaded);
+        }
+        TogglePendingDetailColumnsButton.Content = _pendingDetailColumnsVisible
+            ? "收起详情"
+            : "展开详情";
+        FooterStatusText.Text = _pendingDetailColumnsVisible
+            ? "已显示待受理详情字段"
+            : "已收起待受理详情字段";
+    }
+
+    private void ToggleExcelCloseDetailColumns_Click(object sender, RoutedEventArgs e)
+    {
+        _excelCloseDetailColumnsVisible = !_excelCloseDetailColumnsVisible;
+        SetColumnVisibility(
+            _excelCloseDetailColumnsVisible,
+            ExcelCloseTypeColumn,
+            ExcelCloseSystemColumn,
+            ExcelCloseAssigneeColumn,
+            ExcelCloseApplicantColumn,
+            ExcelCloseCreateTimeColumn,
+            ExcelCloseClosedAtColumn,
+            ExcelCloseMessageColumn);
+        SetDetailTableWidth(
+            ExcelCloseTicketHorizontalScroller,
+            ExcelCloseTicketGrid,
+            _excelCloseDetailColumnsVisible);
+        if (_excelCloseDetailColumnsVisible)
+        {
+            Dispatcher.BeginInvoke(
+                () => SetDetailTableWidth(ExcelCloseTicketHorizontalScroller, ExcelCloseTicketGrid, true),
+                DispatcherPriority.Loaded);
+        }
+        ToggleExcelCloseDetailColumnsButton.Content = _excelCloseDetailColumnsVisible
+            ? "收起详情"
+            : "展开详情";
+        FooterStatusText.Text = _excelCloseDetailColumnsVisible
+            ? "已显示提交清单关闭详情字段"
+            : "已收起提交清单关闭详情字段";
+    }
+
+    private static void SetColumnVisibility(
+        bool visible,
+        params System.Windows.Controls.DataGridColumn[] columns)
+    {
+        var visibility = visible ? Visibility.Visible : Visibility.Collapsed;
+        foreach (var column in columns)
+        {
+            column.Visibility = visibility;
+        }
+    }
+
+    private static void SetDetailTableWidth(
+        ScrollViewer scroller,
+        DataGrid grid,
+        bool detailVisible)
+    {
+        if (detailVisible)
+        {
+            scroller.HorizontalScrollBarVisibility = ScrollBarVisibility.Visible;
+            var detailWidth = CalculateVisibleColumnWidth(grid);
+            grid.MinWidth = detailWidth;
+            grid.Width = detailWidth;
+            grid.Margin = new Thickness(0, 0, DetailTableRightPadding, 0);
+            return;
+        }
+
+        scroller.ScrollToHorizontalOffset(0);
+        scroller.HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled;
+        grid.ClearValue(FrameworkElement.MinWidthProperty);
+        grid.ClearValue(FrameworkElement.WidthProperty);
+        grid.ClearValue(FrameworkElement.MarginProperty);
+    }
+
+    private static double CalculateVisibleColumnWidth(DataGrid grid)
+    {
+        var total = grid.Columns
+            .Where(column => column.Visibility == Visibility.Visible)
+            .Sum(GetColumnRequestedWidth);
+        return Math.Max(total, grid.ActualWidth);
+    }
+
+    private static double GetColumnRequestedWidth(DataGridColumn column)
+    {
+        var width = column.Width;
+        if (width.IsAbsolute)
+        {
+            return Math.Max(width.Value, column.MinWidth);
+        }
+
+        if (column.ActualWidth > 0)
+        {
+            return Math.Max(column.ActualWidth, column.MinWidth);
+        }
+
+        if (column.MinWidth > 0)
+        {
+            return column.MinWidth;
+        }
+
+        return 120;
+    }
+
     private async Task RefreshPendingTicketsAsync(
         CancellationToken cancellationToken,
         bool writeLog = true)
@@ -641,6 +845,7 @@ public partial class MainWindow : Window
         {
             ExcelCloseResultTotalText.Text = "0";
             ExcelCloseProgressText.Text = "请先选择 Excel 清单";
+            SetUiState();
             return;
         }
 
@@ -989,6 +1194,29 @@ public partial class MainWindow : Window
         });
     }
 
+    private async void ExportDiagnostics_Click(object sender, RoutedEventArgs e)
+    {
+        await RunBusyActionAsync(async token =>
+        {
+            var packagePath = await _diagnosticExporter.ExportAsync(
+                ApplicationPaths.DiagnosticDirectory,
+                _logger?.LogPath,
+                _workbook,
+                _settings,
+                token);
+            AddLog($"诊断包已导出：{packagePath}");
+            FooterStatusText.Text = "诊断包已导出";
+
+            var result = ShowConfirm(
+                "诊断包已导出",
+                $"已生成脱敏诊断包：\n{packagePath}\n\n是否打开所在文件夹？");
+            if (result)
+            {
+                OpenDirectory(ApplicationPaths.DiagnosticDirectory);
+            }
+        });
+    }
+
     private async void CheckSession_Click(object sender, RoutedEventArgs e)
     {
         try
@@ -1252,14 +1480,27 @@ public partial class MainWindow : Window
             _excelCloseTickets.Any(ticket => ticket.IsSelected && ticket.CanClose);
         PauseButton.IsEnabled = _running && !_closing;
         StopButton.IsEnabled = _running && !_closing;
+        ExportDiagnosticsButton.IsEnabled = !_running;
         PauseCloseButton.IsEnabled =
             _running && _closing && _activeCloseSource == CloseQueueSource.PendingQuery;
         StopCloseButton.IsEnabled =
             _running && _closing && _activeCloseSource == CloseQueueSource.PendingQuery;
+        PauseCloseButton.Visibility = PauseCloseButton.IsEnabled ? Visibility.Visible : Visibility.Collapsed;
+        StopCloseButton.Visibility = StopCloseButton.IsEnabled ? Visibility.Visible : Visibility.Collapsed;
         PauseExcelCloseButton.IsEnabled =
             _running && _closing && _activeCloseSource == CloseQueueSource.ExcelSubmissionList;
         StopExcelCloseButton.IsEnabled =
             _running && _closing && _activeCloseSource == CloseQueueSource.ExcelSubmissionList;
+        PauseExcelCloseButton.Visibility = PauseExcelCloseButton.IsEnabled ? Visibility.Visible : Visibility.Collapsed;
+        StopExcelCloseButton.Visibility = StopExcelCloseButton.IsEnabled ? Visibility.Visible : Visibility.Collapsed;
+        UpdateEmptyStates();
+    }
+
+    private void UpdateEmptyStates()
+    {
+        TicketEmptyState.Visibility = _rows.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        PendingEmptyState.Visibility = _pendingTickets.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+        ExcelCloseEmptyState.Visibility = _excelCloseTickets.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
     }
 
     private void AddLog(string message, bool isError = false)
@@ -1341,4 +1582,18 @@ public partial class MainWindow : Window
 
     private static string FormatSeconds(TimeSpan value) =>
         $"{Math.Ceiling(value.TotalSeconds):0} 秒";
+
+    private static void OpenDirectory(string directory)
+    {
+        if (!Directory.Exists(directory))
+        {
+            return;
+        }
+
+        Process.Start(new ProcessStartInfo
+        {
+            FileName = directory,
+            UseShellExecute = true
+        });
+    }
 }

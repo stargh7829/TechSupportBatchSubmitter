@@ -37,6 +37,28 @@ public sealed class TicketInputValidatorTests
         Assert.Contains("指定受理人", error);
     }
 
+    [Fact]
+    public void Validate_WhenTitleIsTooLong_ReturnsLengthError()
+    {
+        var row = CreateRow();
+        row = Clone(row, title: new string('测', 121));
+
+        var error = TicketInputValidator.Validate(row);
+
+        Assert.Contains("标题过长", error);
+    }
+
+    [Fact]
+    public void Validate_WhenTicketNumberIsInvalid_ReturnsTicketNumberError()
+    {
+        var row = CreateRow();
+        row.TicketNumber = "ABC-1";
+
+        var error = TicketInputValidator.Validate(row);
+
+        Assert.Contains("技术支持编号格式异常", error);
+    }
+
     private static TicketRow CreateRow() => new()
     {
         ExcelRowNumber = 2,
@@ -51,5 +73,21 @@ public sealed class TicketInputValidatorTests
         OriginalDate = "2026/6/15",
         Fingerprint = "fingerprint",
         State = SubmissionState.Pending
+    };
+
+    private static TicketRow Clone(TicketRow row, string? title = null) => new()
+    {
+        ExcelRowNumber = row.ExcelRowNumber,
+        Sequence = row.Sequence,
+        Title = title ?? row.Title,
+        Discoverer = row.Discoverer,
+        Applicant = row.Applicant,
+        EventType = row.EventType,
+        SystemName = row.SystemName,
+        Assignee = row.Assignee,
+        Description = row.Description,
+        OriginalDate = row.OriginalDate,
+        Fingerprint = row.Fingerprint,
+        State = row.State
     };
 }

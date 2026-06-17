@@ -10,8 +10,10 @@
 
   <ItemGroup>
     <None Remove="Assets\AppIcon.ico" />
+    <None Remove="Assets\AppIcon.png" />
     <None Remove="Assets\CatMascot.png" />
     <Resource Include="Assets\AppIcon.ico" />
+    <Resource Include="Assets\AppIcon.png" />
     <Resource Include="Assets\CatMascot.png" />
   </ItemGroup>
 
@@ -29,7 +31,7 @@
     <AssemblyName>TechSupportBatchSubmitter</AssemblyName>
     <Product>技术支持批量提交工具</Product>
     <Company>Internal Tools</Company>
-    <Version>1.3.4</Version>
+    <Version>1.4.0</Version>
   </PropertyGroup>
 
 </Project>

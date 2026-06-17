@@ -16,7 +16,16 @@ $project = Join-Path $repoRoot 'src\TechSupportBatchSubmitter.Wpf\TechSupportBat
 $solution = Join-Path $repoRoot 'TechSupportBatchSubmitter.sln'
 $artifactsRoot = [System.IO.Path]::GetFullPath((Join-Path $repoRoot 'artifacts'))
 $publishDirectory = Join-Path $artifactsRoot 'portable\TechSupportBatchSubmitter'
-$zipPath = Join-Path $artifactsRoot '技术支持批量提交工具-win-x64.zip'
+$projectXml = [xml](Get-Content -LiteralPath $project -Raw)
+$version = $projectXml.Project.PropertyGroup.Version |
+    Where-Object { -not [string]::IsNullOrWhiteSpace($_) } |
+    Select-Object -First 1
+if ([string]::IsNullOrWhiteSpace($version)) {
+    throw '项目文件缺少 Version。'
+}
+
+$zipPath = Join-Path $artifactsRoot "技术支持批量提交工具-$version-win-x64.zip"
+$latestZipPath = Join-Path $artifactsRoot '技术支持批量提交工具-win-x64.zip'
 
 if (-not $artifactsRoot.StartsWith($repoRoot, [System.StringComparison]::OrdinalIgnoreCase)) {
     throw "发布目录不在仓库内：$artifactsRoot"
@@ -62,10 +71,14 @@ if ((Get-Item -LiteralPath $webViewInstaller).Length -lt 1MB) {
     throw 'WebView2 安装程序下载结果异常。'
 }
 
-if (Test-Path -LiteralPath $zipPath) {
-    Remove-Item -LiteralPath $zipPath -Force
+foreach ($path in @($zipPath, $latestZipPath)) {
+    if (Test-Path -LiteralPath $path) {
+        Remove-Item -LiteralPath $path -Force
+    }
 }
 Compress-Archive -Path (Join-Path $publishDirectory '*') -DestinationPath $zipPath
+Copy-Item -LiteralPath $zipPath -Destination $latestZipPath
 
 Write-Host "发布目录：$publishDirectory"
-Write-Host "压缩包：$zipPath"
+Write-Host "版本压缩包：$zipPath"
+Write-Host "通用压缩包：$latestZipPath"

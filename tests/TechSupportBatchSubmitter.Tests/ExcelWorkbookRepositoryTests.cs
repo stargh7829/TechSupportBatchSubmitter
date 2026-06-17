@@ -37,6 +37,8 @@ public sealed class ExcelWorkbookRepositoryTests : IDisposable
         Assert.Equal("实际关闭时间", worksheet.Cell(1, 15).GetString());
         Assert.Equal("关闭失败原因", worksheet.Cell(1, 16).GetString());
         Assert.NotEqual(XLBorderStyleValues.None, worksheet.Cell(2, 16).Style.Border.BottomBorder);
+        Assert.Equal(116, result.Diagnostics.TotalRows);
+        Assert.True(result.Diagnostics.PendingRows > 0);
     }
 
     [Fact]
@@ -90,6 +92,20 @@ public sealed class ExcelWorkbookRepositoryTests : IDisposable
     }
 
     [Fact]
+    public async Task ExcelCloseTicketFactory_ExcludesInvalidTicketNumbers()
+    {
+        var path = CopyTemplate();
+        var repository = new ExcelWorkbookRepository();
+        var load = await repository.PrepareAndLoadAsync(path);
+        load.Rows[0].TicketNumber = "ABC-1";
+        load.Rows[0].State = SubmissionState.ValidationFailed;
+
+        var closeRows = ExcelCloseTicketFactory.CreateCloseRows(load);
+
+        Assert.DoesNotContain(closeRows, row => row.ExcelRowNumber == load.Rows[0].ExcelRowNumber);
+    }
+
+    [Fact]
     public async Task UpdateRows_WhenFileChangedExternally_Throws()
     {
         var path = CopyTemplate();
@@ -119,6 +135,87 @@ public sealed class ExcelWorkbookRepositoryTests : IDisposable
             () => repository.PrepareAndLoadAsync(path));
 
         Assert.Contains("完整模板表头", error.Message);
+    }
+
+    [Fact]
+    public async Task PrepareAndLoad_WhenTemplateHasDuplicateHeader_Throws()
+    {
+        var path = Path.Combine(_tempDirectory, "duplicate-header.xlsx");
+        using (var workbook = new XLWorkbook())
+        {
+            var worksheet = workbook.AddWorksheet("Sheet1");
+            for (var index = 0; index < ExcelWorkbookRepository.RequiredHeaders.Length; index++)
+            {
+                worksheet.Cell(1, index + 1).Value = ExcelWorkbookRepository.RequiredHeaders[index];
+            }
+
+            worksheet.Cell(1, 10).Value = "标题";
+            worksheet.Cell(2, 1).Value = "1";
+            workbook.SaveAs(path);
+        }
+
+        var repository = new ExcelWorkbookRepository();
+        var error = await Assert.ThrowsAsync<InvalidDataException>(
+            () => repository.PrepareAndLoadAsync(path));
+
+        Assert.Contains("重复表头", error.Message);
+        Assert.Contains("标题", error.Message);
+    }
+
+    [Fact]
+    public async Task PrepareAndLoad_WhenTemplateHasNoRows_Throws()
+    {
+        var path = Path.Combine(_tempDirectory, "empty-template.xlsx");
+        using (var workbook = new XLWorkbook())
+        {
+            var worksheet = workbook.AddWorksheet("Sheet1");
+            for (var index = 0; index < ExcelWorkbookRepository.RequiredHeaders.Length; index++)
+            {
+                worksheet.Cell(1, index + 1).Value = ExcelWorkbookRepository.RequiredHeaders[index];
+            }
+
+            workbook.SaveAs(path);
+        }
+
+        var repository = new ExcelWorkbookRepository();
+        var error = await Assert.ThrowsAsync<InvalidDataException>(
+            () => repository.PrepareAndLoadAsync(path));
+
+        Assert.Contains("没有可读取的数据行", error.Message);
+    }
+
+    [Fact]
+    public async Task PrepareAndLoad_WhenRowHasValidationError_MarksRowAsValidationFailed()
+    {
+        var path = Path.Combine(_tempDirectory, "invalid-row.xlsx");
+        using (var workbook = new XLWorkbook())
+        {
+            var worksheet = workbook.AddWorksheet("Sheet1");
+            for (var index = 0; index < ExcelWorkbookRepository.RequiredHeaders.Length; index++)
+            {
+                worksheet.Cell(1, index + 1).Value = ExcelWorkbookRepository.RequiredHeaders[index];
+            }
+
+            worksheet.Cell(2, 1).Value = "1";
+            worksheet.Cell(2, 2).Value = string.Empty;
+            worksheet.Cell(2, 3).Value = "发现人";
+            worksheet.Cell(2, 4).Value = "申请人";
+            worksheet.Cell(2, 5).Value = "数据疑问";
+            worksheet.Cell(2, 6).Value = "就业管理";
+            worksheet.Cell(2, 7).Value = "受理人";
+            worksheet.Cell(2, 8).Value = "描述";
+            worksheet.Cell(2, 9).Value = "2026/6/16";
+            workbook.SaveAs(path);
+        }
+
+        var repository = new ExcelWorkbookRepository();
+        var result = await repository.PrepareAndLoadAsync(path);
+
+        Assert.Single(result.Rows);
+        Assert.Equal(SubmissionState.ValidationFailed, result.Rows[0].State);
+        Assert.Contains("标题", result.Rows[0].FailureReason);
+        Assert.Equal(1, result.Diagnostics.ValidationFailedRows);
+        Assert.Contains("Excel 行 2", result.Diagnostics.Warnings[0]);
     }
 
     private string CopyTemplate()

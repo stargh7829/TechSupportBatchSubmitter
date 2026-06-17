@@ -14,6 +14,8 @@ public sealed partial class SafeFileLogger
         _logPath = Path.Combine(logDirectory, $"app-{DateTime.Now:yyyyMMdd}.log");
     }
 
+    public string LogPath => _logPath;
+
     public async Task WriteAsync(string message)
     {
         var sanitized = Sanitize(message);

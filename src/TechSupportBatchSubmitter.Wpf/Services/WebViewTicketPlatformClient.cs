@@ -11,22 +11,23 @@ namespace TechSupportBatchSubmitter.Wpf.Services;
 
 public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
 {
-    public static readonly Uri WorkbenchUri = new("https://172.18.75.21/index.action");
-    public static readonly Uri SupportPlatformUri = new("https://172.18.75.6:18005/xzsw/pages/mini.jsp");
-
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNameCaseInsensitive = true
     };
 
     private readonly WebView2 _webView;
+    private readonly Uri _workbenchUri;
+    private readonly Uri _supportPlatformUri;
     private readonly Dictionary<string, PlatformOption> _personCache = new(StringComparer.Ordinal);
     private readonly Dictionary<string, PlatformOption> _typeCache = new(StringComparer.Ordinal);
     private readonly Dictionary<string, PlatformOption> _systemCache = new(StringComparer.Ordinal);
 
-    public WebViewTicketPlatformClient(WebView2 webView)
+    public WebViewTicketPlatformClient(WebView2 webView, AppSettings settings)
     {
         _webView = webView;
+        _workbenchUri = settings.WorkbenchUri;
+        _supportPlatformUri = settings.SupportPlatformUri;
     }
 
     public event EventHandler? SessionExpired;
@@ -65,10 +66,10 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
     }
 
     public void NavigateToWorkbench() =>
-        _webView.CoreWebView2?.Navigate(WorkbenchUri.AbsoluteUri);
+        _webView.CoreWebView2?.Navigate(_workbenchUri.AbsoluteUri);
 
     public void NavigateToSupportPlatform() =>
-        _webView.CoreWebView2?.Navigate(SupportPlatformUri.AbsoluteUri);
+        _webView.CoreWebView2?.Navigate(_supportPlatformUri.AbsoluteUri);
 
     public async Task OpenSupportPlatformAsync()
     {

@@ -188,7 +188,7 @@ public sealed class ExcelWorkbookRepository : IWorkbookRepository
                 ? SubmissionState.Succeeded
                 : SubmissionStateExtensions.FromDisplayText(stateText);
 
-            rows.Add(new TicketRow
+            var ticketRow = new TicketRow
             {
                 ExcelRowNumber = rowNumber,
                 Sequence = sequence,
@@ -219,10 +219,28 @@ public sealed class ExcelWorkbookRepository : IWorkbookRepository
                     (closedAt is not null ? TicketCloseState.Succeeded : TicketCloseState.Ready),
                 ClosedAt = closedAt,
                 CloseFailureReason = closeFailureReason
-            });
+            };
+
+            if (TicketInputValidator.Validate(ticketRow) is { } validationError &&
+                (ticketRow.State != SubmissionState.Succeeded ||
+                    validationError.Contains("技术支持编号格式异常", StringComparison.Ordinal)))
+            {
+                ticketRow.State = SubmissionState.ValidationFailed;
+                ticketRow.FailureReason = validationError;
+            }
+
+            rows.Add(ticketRow);
         }
 
-        return new WorkbookLoadResult(fullPath, worksheetName, rows, backupPath);
+        if (rows.Count == 0)
+        {
+            throw new InvalidDataException("提交清单没有可读取的数据行，请至少保留一条有效记录。");
+        }
+
+        return new WorkbookLoadResult(fullPath, worksheetName, rows, backupPath)
+        {
+            Diagnostics = BuildDiagnostics(rows)
+        };
     }
 
     private static string ValidatePath(string workbookPath)
@@ -251,7 +269,7 @@ public sealed class ExcelWorkbookRepository : IWorkbookRepository
         var matches = workbook.Worksheets
             .Where(sheet =>
             {
-                var headers = ReadHeaderMap(sheet);
+                var headers = ReadHeaderMap(sheet, failOnDuplicate: false);
                 return RequiredHeaders.All(headers.ContainsKey);
             })
             .ToList();
@@ -265,17 +283,29 @@ public sealed class ExcelWorkbookRepository : IWorkbookRepository
         };
     }
 
-    private static Dictionary<string, int> ReadHeaderMap(IXLWorksheet worksheet)
+    private static Dictionary<string, int> ReadHeaderMap(IXLWorksheet worksheet, bool failOnDuplicate = true)
     {
         var lastColumn = worksheet.Row(1).LastCellUsed()?.Address.ColumnNumber ?? 0;
         var headers = new Dictionary<string, int>(StringComparer.Ordinal);
+        var duplicated = new List<string>();
         for (var column = 1; column <= lastColumn; column++)
         {
             var header = worksheet.Cell(1, column).GetString().Trim();
-            if (!string.IsNullOrWhiteSpace(header) && !headers.ContainsKey(header))
+            if (string.IsNullOrWhiteSpace(header))
             {
-                headers[header] = column;
+                continue;
             }
+
+            if (!headers.TryAdd(header, column))
+            {
+                duplicated.Add(header);
+            }
+        }
+
+        if (failOnDuplicate && duplicated.Count > 0)
+        {
+            throw new InvalidDataException(
+                $"检测到重复表头：{string.Join("、", duplicated.Distinct(StringComparer.Ordinal))}。请删除重复列后重试。");
         }
 
         return headers;
@@ -428,4 +458,25 @@ public sealed class ExcelWorkbookRepository : IWorkbookRepository
 
     private static string? NullIfWhiteSpace(string? value) =>
         string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private static WorkbookDiagnostics BuildDiagnostics(IReadOnlyCollection<TicketRow> rows)
+    {
+        var warnings = rows
+            .Where(row => row.State == SubmissionState.ValidationFailed &&
+                !string.IsNullOrWhiteSpace(row.FailureReason))
+            .Take(8)
+            .Select(row => $"Excel 行 {row.ExcelRowNumber}：{row.FailureReason}")
+            .ToList();
+
+        var succeeded = rows.Count(row => row.State == SubmissionState.Succeeded);
+        return new WorkbookDiagnostics(
+            TotalRows: rows.Count,
+            PendingRows: rows.Count(row => row.State == SubmissionState.Pending),
+            SucceededRows: succeeded,
+            ValidationFailedRows: rows.Count(row => row.State == SubmissionState.ValidationFailed),
+            CloseReadyRows: rows.Count(row => !string.IsNullOrWhiteSpace(row.TicketNumber) &&
+                row.State != SubmissionState.ValidationFailed &&
+                row.CloseState != TicketCloseState.Succeeded),
+            Warnings: warnings);
+    }
 }

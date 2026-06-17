@@ -9,7 +9,8 @@ public static class ExcelCloseTicketFactory
     public static List<PendingTicketRow> CreateCloseRows(WorkbookLoadResult workbook)
     {
         return workbook.Rows
-            .Where(row => !string.IsNullOrWhiteSpace(row.TicketNumber))
+            .Where(row => !string.IsNullOrWhiteSpace(row.TicketNumber) &&
+                row.State != SubmissionState.ValidationFailed)
             .Select(row => new PendingTicketRow
             {
                 IsSelected = false,

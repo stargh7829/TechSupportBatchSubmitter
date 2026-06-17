@@ -14,10 +14,15 @@ public static class ApplicationPaths
 
     public static string LogDirectory => Path.Combine(RootDirectory, "logs");
 
+    public static string DiagnosticDirectory => Path.Combine(RootDirectory, "diagnostics");
+
+    public static string SettingsPath => Path.Combine(RootDirectory, "settings.json");
+
     public static void EnsureCreated()
     {
         Directory.CreateDirectory(RootDirectory);
         Directory.CreateDirectory(WebViewUserDataDirectory);
         Directory.CreateDirectory(LogDirectory);
+        Directory.CreateDirectory(DiagnosticDirectory);
     }
 }
