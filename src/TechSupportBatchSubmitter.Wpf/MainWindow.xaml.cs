@@ -59,6 +59,10 @@ public partial class MainWindow : Window
     private bool _loginPaneCollapsed;
     private bool _pendingDetailColumnsVisible;
     private bool _excelCloseDetailColumnsVisible;
+    private bool _pendingCustomReplyVisible;
+    private bool _excelCloseCustomReplyVisible;
+    private CloseTicketCauseOption _pendingCloseCause = CloseReplyCatalog.DefaultCause;
+    private CloseTicketCauseOption _excelCloseCause = CloseReplyCatalog.DefaultCause;
 
     private const double DetailTableRightPadding = 240;
 
@@ -77,7 +81,10 @@ public partial class MainWindow : Window
         ExcelCloseTickets = _excelCloseTickets;
         SubmissionHistory = _submissionHistory;
         CloseHistory = _closeHistory;
+        CloseCauseOptions = CloseReplyCatalog.CauseOptions;
+        CloseSolveTypes = CloseReplyCatalog.SolveTypes;
         DataContext = this;
+        InitializeCloseReplyDefaults();
     }
 
     public ObservableCollection<TicketRow> Rows { get; }
@@ -85,6 +92,8 @@ public partial class MainWindow : Window
     public ObservableCollection<PendingTicketRow> ExcelCloseTickets { get; }
     public ObservableCollection<SubmissionHistoryRecord> SubmissionHistory { get; }
     public ObservableCollection<CloseHistoryRecord> CloseHistory { get; }
+    public IReadOnlyList<CloseTicketCauseOption> CloseCauseOptions { get; }
+    public IReadOnlyList<KeyValuePair<string, string>> CloseSolveTypes { get; }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
@@ -608,6 +617,170 @@ public partial class MainWindow : Window
             : "已收起提交清单关闭详情字段";
     }
 
+    private void InitializeCloseReplyDefaults()
+    {
+        ResetCloseReplyFields(
+            PendingCloseCauseText,
+            PendingCloseSolveTypeComboBox,
+            PendingCloseCauseDescriptionText,
+            PendingCloseSolutionText,
+            ref _pendingCloseCause);
+        ResetCloseReplyFields(
+            ExcelCloseCauseText,
+            ExcelCloseSolveTypeComboBox,
+            ExcelCloseCauseDescriptionText,
+            ExcelCloseSolutionText,
+            ref _excelCloseCause);
+    }
+
+    private static void ResetCloseReplyFields(
+        System.Windows.Controls.TextBox causeText,
+        System.Windows.Controls.ComboBox solveTypeComboBox,
+        System.Windows.Controls.TextBox causeDescriptionText,
+        System.Windows.Controls.TextBox solutionText,
+        ref CloseTicketCauseOption selectedCause)
+    {
+        selectedCause = CloseReplyCatalog.DefaultCause;
+        causeText.Text = selectedCause.Path;
+        solveTypeComboBox.SelectedValue = CloseTicketSettings.Default.SolveTypeValue;
+        causeDescriptionText.Text = CloseTicketSettings.Default.CauseDescription;
+        solutionText.Text = CloseTicketSettings.Default.SolutionDescription;
+    }
+
+    private void TogglePendingCustomReply_Click(object sender, RoutedEventArgs e)
+    {
+        _pendingCustomReplyVisible = !_pendingCustomReplyVisible;
+        PendingCustomReplyPanel.Visibility = _pendingCustomReplyVisible ? Visibility.Visible : Visibility.Collapsed;
+        TogglePendingCustomReplyButton.Content = _pendingCustomReplyVisible ? "默认回复" : "自定义回复";
+        FooterStatusText.Text = _pendingCustomReplyVisible
+            ? "已打开待受理自定义回复"
+            : "待受理关闭将使用默认回复";
+    }
+
+    private void ToggleExcelCloseCustomReply_Click(object sender, RoutedEventArgs e)
+    {
+        _excelCloseCustomReplyVisible = !_excelCloseCustomReplyVisible;
+        ExcelCloseCustomReplyPanel.Visibility =
+            _excelCloseCustomReplyVisible ? Visibility.Visible : Visibility.Collapsed;
+        ToggleExcelCloseCustomReplyButton.Content = _excelCloseCustomReplyVisible ? "默认回复" : "自定义回复";
+        FooterStatusText.Text = _excelCloseCustomReplyVisible
+            ? "已打开提交清单关闭自定义回复"
+            : "提交清单关闭将使用默认回复";
+    }
+
+    private void ResetPendingCustomReply_Click(object sender, RoutedEventArgs e)
+    {
+        ResetCloseReplyFields(
+            PendingCloseCauseText,
+            PendingCloseSolveTypeComboBox,
+            PendingCloseCauseDescriptionText,
+            PendingCloseSolutionText,
+            ref _pendingCloseCause);
+    }
+
+    private void ResetExcelCloseCustomReply_Click(object sender, RoutedEventArgs e)
+    {
+        ResetCloseReplyFields(
+            ExcelCloseCauseText,
+            ExcelCloseSolveTypeComboBox,
+            ExcelCloseCauseDescriptionText,
+            ExcelCloseSolutionText,
+            ref _excelCloseCause);
+    }
+
+    private void TogglePendingCloseCausePopup_Click(object sender, RoutedEventArgs e) =>
+        PendingCloseCausePopup.IsOpen = !PendingCloseCausePopup.IsOpen;
+
+    private void ToggleExcelCloseCausePopup_Click(object sender, RoutedEventArgs e) =>
+        ExcelCloseCausePopup.IsOpen = !ExcelCloseCausePopup.IsOpen;
+
+    private void PendingCloseCauseTree_SelectedItemChanged(
+        object sender,
+        RoutedPropertyChangedEventArgs<object> e)
+    {
+        if (e.NewValue is not CloseTicketCauseOption option)
+        {
+            return;
+        }
+
+        _pendingCloseCause = option;
+        PendingCloseCauseText.Text = option.Path;
+        PendingCloseCausePopup.IsOpen = false;
+    }
+
+    private void ExcelCloseCauseTree_SelectedItemChanged(
+        object sender,
+        RoutedPropertyChangedEventArgs<object> e)
+    {
+        if (e.NewValue is not CloseTicketCauseOption option)
+        {
+            return;
+        }
+
+        _excelCloseCause = option;
+        ExcelCloseCauseText.Text = option.Path;
+        ExcelCloseCausePopup.IsOpen = false;
+    }
+
+    private CloseTicketSettings? TryGetCloseSettings(CloseQueueSource source)
+    {
+        var customEnabled = source == CloseQueueSource.ExcelSubmissionList
+            ? _excelCloseCustomReplyVisible
+            : _pendingCustomReplyVisible;
+        if (!customEnabled)
+        {
+            return CloseTicketSettings.Default;
+        }
+
+        var cause = source == CloseQueueSource.ExcelSubmissionList
+            ? _excelCloseCause
+            : _pendingCloseCause;
+        var causeDescription = (source == CloseQueueSource.ExcelSubmissionList
+            ? ExcelCloseCauseDescriptionText.Text
+            : PendingCloseCauseDescriptionText.Text).Trim();
+        var solutionDescription = (source == CloseQueueSource.ExcelSubmissionList
+            ? ExcelCloseSolutionText.Text
+            : PendingCloseSolutionText.Text).Trim();
+        var solveTypeComboBox = source == CloseQueueSource.ExcelSubmissionList
+            ? ExcelCloseSolveTypeComboBox
+            : PendingCloseSolveTypeComboBox;
+        var solveTypeValue = solveTypeComboBox.SelectedValue?.ToString() ?? string.Empty;
+        var solveTypeName = solveTypeComboBox.Text.Trim();
+
+        if (string.IsNullOrWhiteSpace(cause.Path))
+        {
+            ShowInfo("自定义回复未完整", "请选择原因分类。");
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(causeDescription))
+        {
+            ShowInfo("自定义回复未完整", "请填写原因描述。");
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(solveTypeValue) || string.IsNullOrWhiteSpace(solveTypeName))
+        {
+            ShowInfo("自定义回复未完整", "请选择解决方法。");
+            return null;
+        }
+
+        if (string.IsNullOrWhiteSpace(solutionDescription))
+        {
+            ShowInfo("自定义回复未完整", "请填写解决方案。");
+            return null;
+        }
+
+        return new CloseTicketSettings(
+            cause.Value,
+            cause.Name,
+            cause.Path,
+            causeDescription,
+            solveTypeValue,
+            solveTypeName,
+            solutionDescription);
+    }
+
     private static void SetColumnVisibility(
         bool visible,
         params System.Windows.Controls.DataGridColumn[] columns)
@@ -803,12 +976,18 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (!ConfirmClose(1, false, closeInterval))
+        var closeSettings = TryGetCloseSettings(CloseQueueSource.PendingQuery);
+        if (closeSettings is null)
         {
             return;
         }
 
-        await RunCloseQueueAsync([ticket], CloseQueueSource.PendingQuery, closeInterval);
+        if (!ConfirmClose(1, false, closeInterval, closeSettings))
+        {
+            return;
+        }
+
+        await RunCloseQueueAsync([ticket], CloseQueueSource.PendingQuery, closeInterval, closeSettings);
     }
 
     private async void BulkClose_Click(object sender, RoutedEventArgs e)
@@ -830,12 +1009,18 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (!ConfirmClose(selected.Count, true, closeInterval))
+        var closeSettings = TryGetCloseSettings(CloseQueueSource.PendingQuery);
+        if (closeSettings is null)
         {
             return;
         }
 
-        await RunCloseQueueAsync(selected, CloseQueueSource.PendingQuery, closeInterval);
+        if (!ConfirmClose(selected.Count, true, closeInterval, closeSettings))
+        {
+            return;
+        }
+
+        await RunCloseQueueAsync(selected, CloseQueueSource.PendingQuery, closeInterval, closeSettings);
     }
 
     private void RebuildExcelCloseTickets()
@@ -946,12 +1131,18 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (!ConfirmClose(1, false, closeInterval))
+        var closeSettings = TryGetCloseSettings(CloseQueueSource.ExcelSubmissionList);
+        if (closeSettings is null)
         {
             return;
         }
 
-        await RunCloseQueueAsync([ticket], CloseQueueSource.ExcelSubmissionList, closeInterval);
+        if (!ConfirmClose(1, false, closeInterval, closeSettings))
+        {
+            return;
+        }
+
+        await RunCloseQueueAsync([ticket], CloseQueueSource.ExcelSubmissionList, closeInterval, closeSettings);
     }
 
     private async void BulkCloseExcel_Click(object sender, RoutedEventArgs e)
@@ -973,15 +1164,25 @@ public partial class MainWindow : Window
             return;
         }
 
-        if (!ConfirmClose(selected.Count, true, closeInterval))
+        var closeSettings = TryGetCloseSettings(CloseQueueSource.ExcelSubmissionList);
+        if (closeSettings is null)
         {
             return;
         }
 
-        await RunCloseQueueAsync(selected, CloseQueueSource.ExcelSubmissionList, closeInterval);
+        if (!ConfirmClose(selected.Count, true, closeInterval, closeSettings))
+        {
+            return;
+        }
+
+        await RunCloseQueueAsync(selected, CloseQueueSource.ExcelSubmissionList, closeInterval, closeSettings);
     }
 
-    private bool ConfirmClose(int count, bool isBulk, DelaySchedule closeInterval)
+    private bool ConfirmClose(
+        int count,
+        bool isBulk,
+        DelaySchedule closeInterval,
+        CloseTicketSettings settings)
     {
         var interval = isBulk
             ? $"\n每条核验完成后{DescribeInterval(closeInterval)}再处理下一条。"
@@ -989,14 +1190,15 @@ public partial class MainWindow : Window
         return ShowConfirm(
             "确认关闭技术支持单",
             $"即将对真实平台中的 {count} 条技术支持单执行“受理并总结”。\n\n" +
-            "原因分类：数据疑问\n原因描述：已处理\n解决方法：修改数据\n解决方案：已处理\n" +
+            $"{settings.ToConfirmationText()}\n" +
             $"事件描述保持平台默认引用值，不修改。{interval}\n\n确认继续吗？");
     }
 
     private async Task RunCloseQueueAsync(
         IReadOnlyCollection<PendingTicketRow> tickets,
         CloseQueueSource source,
-        DelaySchedule closeInterval)
+        DelaySchedule closeInterval,
+        CloseTicketSettings closeSettings)
     {
         if (_closeQueue is null)
         {
@@ -1018,7 +1220,7 @@ public partial class MainWindow : Window
         {
             await EnsureSupportSessionAsync(_operationCancellation.Token);
             FooterStatusText.Text = "关闭队列运行中";
-            await _closeQueue.RunAsync(tickets, _operationCancellation.Token);
+            await _closeQueue.RunAsync(tickets, closeSettings, _operationCancellation.Token);
             await PersistExcelCloseResultsIfNeededAsync(source, tickets, _operationCancellation.Token);
             FooterStatusText.Text = "关闭队列执行完成";
             AddLog("关闭队列执行完成");
@@ -1458,6 +1660,10 @@ public partial class MainWindow : Window
         SubmissionIntervalText.IsEnabled = !_running;
         CloseIntervalText.IsEnabled = !_running;
         ExcelCloseIntervalText.IsEnabled = !_running;
+        TogglePendingCustomReplyButton.IsEnabled = !_running;
+        PendingCustomReplyPanel.IsEnabled = !_running;
+        ToggleExcelCloseCustomReplyButton.IsEnabled = !_running;
+        ExcelCloseCustomReplyPanel.IsEnabled = !_running;
         StartButton.IsEnabled =
             hasWorkbook && !_running && _queue is not null &&
             _rows.Any(row => row.State == SubmissionState.Pending);

@@ -1,6 +1,7 @@
 <Window x:Class="TechSupportBatchSubmitter.Wpf.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:core="clr-namespace:TechSupportBatchSubmitter.Core.Models;assembly=TechSupportBatchSubmitter.Core"
         xmlns:shell="clr-namespace:System.Windows.Shell;assembly=PresentationFramework"
         xmlns:wv2="clr-namespace:Microsoft.Web.WebView2.Wpf;assembly=Microsoft.Web.WebView2.Wpf"
         Title="技术支持批量提交工具"
@@ -207,6 +208,19 @@
                 </Setter.Value>
             </Setter>
         </Style>
+        <Style x:Key="PickerDropButton" TargetType="Button">
+            <Setter Property="Width" Value="30"/>
+            <Setter Property="Height" Value="30"/>
+            <Setter Property="MinWidth" Value="30"/>
+            <Setter Property="MinHeight" Value="30"/>
+            <Setter Property="Padding" Value="0"/>
+            <Setter Property="Margin" Value="0"/>
+            <Setter Property="Background" Value="Transparent"/>
+            <Setter Property="BorderBrush" Value="Transparent"/>
+            <Setter Property="Foreground" Value="{StaticResource TextBrush}"/>
+            <Setter Property="FontWeight" Value="Bold"/>
+            <Setter Property="Cursor" Value="Hand"/>
+        </Style>
         <Style TargetType="TextBox">
             <Setter Property="Height" Value="34"/>
             <Setter Property="Padding" Value="10,5"/>
@@ -379,6 +393,26 @@
             <Setter Property="Opacity" Value="0.9"/>
             <Setter Property="IsHitTestVisible" Value="False"/>
         </Style>
+        <HierarchicalDataTemplate DataType="{x:Type core:CloseTicketCauseOption}"
+                                  ItemsSource="{Binding Children}">
+            <StackPanel Orientation="Horizontal" Margin="2,3">
+                <TextBlock Text="📁"
+                           Margin="0,0,6,0"
+                           Foreground="#D9A948">
+                    <TextBlock.Style>
+                        <Style TargetType="TextBlock">
+                            <Style.Triggers>
+                                <DataTrigger Binding="{Binding Children}" Value="{x:Null}">
+                                    <Setter Property="Text" Value="📄"/>
+                                    <Setter Property="Foreground" Value="#8AA1C1"/>
+                                </DataTrigger>
+                            </Style.Triggers>
+                        </Style>
+                    </TextBlock.Style>
+                </TextBlock>
+                <TextBlock Text="{Binding Name}"/>
+            </StackPanel>
+        </HierarchicalDataTemplate>
     </Window.Resources>
 
     <Grid>
@@ -769,6 +803,7 @@
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
 
@@ -882,6 +917,9 @@
                                     </StackPanel>
                                     <Button x:Name="BulkCloseButton" Content="批量关闭"
                                             Click="BulkClose_Click"/>
+                                    <Button x:Name="TogglePendingCustomReplyButton"
+                                            Content="自定义回复"
+                                            Click="TogglePendingCustomReply_Click"/>
                                     <Button x:Name="TogglePendingDetailColumnsButton"
                                             Content="展开详情"
                                             Click="TogglePendingDetailColumns_Click"/>
@@ -899,7 +937,158 @@
                             </Grid>
                         </Border>
 
-                        <Border Grid.Row="2" Style="{StaticResource Card}" Padding="0">
+                        <Border x:Name="PendingCustomReplyPanel"
+                                Grid.Row="2"
+                                Style="{StaticResource Card}"
+                                Margin="0,0,0,10"
+                                Visibility="Collapsed">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Grid>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="自定义关闭回复"
+                                                   FontSize="15"
+                                                   FontWeight="SemiBold"/>
+                                        <TextBlock Text="  打开后，本页单条关闭和批量关闭会使用这套回复"
+                                                   Foreground="{StaticResource MutedBrush}"
+                                                   VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <Button Content="恢复默认"
+                                            HorizontalAlignment="Right"
+                                            Padding="12,6"
+                                            Click="ResetPendingCustomReply_Click"/>
+                                </Grid>
+                                <Grid Grid.Row="1" Margin="0,12,0,0">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <Border BorderBrush="#F0D3CC"
+                                            BorderThickness="0,1,0,0"
+                                            Padding="0,10,0,0">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Text="原因分析"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#3F3134"/>
+
+                                            <Grid Grid.Row="1" Margin="0,8,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="82"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="原因分类：" VerticalAlignment="Center"/>
+                                                <Grid Grid.Column="1"
+                                                      Width="380"
+                                                      HorizontalAlignment="Left">
+                                                    <TextBox x:Name="PendingCloseCauseText"
+                                                             IsReadOnly="True"
+                                                             Height="32"
+                                                             Padding="8,4"
+                                                             VerticalContentAlignment="Center"/>
+                                                    <Button Width="32"
+                                                            Padding="0"
+                                                            HorizontalAlignment="Right"
+                                                            Style="{StaticResource PickerDropButton}"
+                                                            Content="⌄"
+                                                            Click="TogglePendingCloseCausePopup_Click"/>
+                                                    <Popup x:Name="PendingCloseCausePopup"
+                                                           PlacementTarget="{Binding ElementName=PendingCloseCauseText}"
+                                                           Placement="Bottom"
+                                                           StaysOpen="False"
+                                                           AllowsTransparency="True">
+                                                        <Border Background="White"
+                                                                BorderBrush="#D6B9B3"
+                                                                BorderThickness="1"
+                                                                Width="330"
+                                                                MaxHeight="300">
+                                                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                                                <TreeView x:Name="PendingCloseCauseTree"
+                                                                          ItemsSource="{Binding CloseCauseOptions}"
+                                                                          SelectedItemChanged="PendingCloseCauseTree_SelectedItemChanged"/>
+                                                            </ScrollViewer>
+                                                        </Border>
+                                                    </Popup>
+                                                </Grid>
+                                            </Grid>
+
+                                            <Grid Grid.Row="2" Margin="0,8,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="82"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="原因描述：" VerticalAlignment="Top" Margin="0,7,0,0"/>
+                                                <TextBox x:Name="PendingCloseCauseDescriptionText"
+                                                         Grid.Column="1"
+                                                         Height="52"
+                                                         Padding="8,6"
+                                                         AcceptsReturn="True"
+                                                         TextWrapping="Wrap"
+                                                         VerticalScrollBarVisibility="Auto"/>
+                                            </Grid>
+                                        </Grid>
+                                    </Border>
+
+                                    <Border Grid.Row="1"
+                                            BorderBrush="#F0D3CC"
+                                            BorderThickness="0,1,0,0"
+                                            Padding="0,10,0,0"
+                                            Margin="0,12,0,0">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Text="事件总结信息"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#3F3134"/>
+
+                                            <Grid Grid.Row="1" Margin="0,8,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="82"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="解决方法：" VerticalAlignment="Center"/>
+                                                <ComboBox x:Name="PendingCloseSolveTypeComboBox"
+                                                          Grid.Column="1"
+                                                          Width="380"
+                                                          HorizontalAlignment="Left"
+                                                          Height="32"
+                                                          DisplayMemberPath="Value"
+                                                          SelectedValuePath="Key"
+                                                          ItemsSource="{Binding CloseSolveTypes}"/>
+                                            </Grid>
+
+                                            <Grid Grid.Row="2" Margin="0,8,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="82"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="解决方案：" VerticalAlignment="Top" Margin="0,7,0,0"/>
+                                                <TextBox x:Name="PendingCloseSolutionText"
+                                                         Grid.Column="1"
+                                                         Height="60"
+                                                         Padding="8,6"
+                                                         AcceptsReturn="True"
+                                                         TextWrapping="Wrap"
+                                                         VerticalScrollBarVisibility="Auto"/>
+                                            </Grid>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Row="3" Style="{StaticResource Card}" Padding="0">
                             <Grid>
                             <ScrollViewer x:Name="PendingTicketHorizontalScroller"
                                           HorizontalScrollBarVisibility="Disabled"
@@ -989,6 +1178,7 @@
                         <Grid.RowDefinitions>
                             <RowDefinition Height="Auto"/>
                             <RowDefinition Height="Auto"/>
+                            <RowDefinition Height="Auto"/>
                             <RowDefinition Height="*"/>
                         </Grid.RowDefinitions>
 
@@ -1031,6 +1221,9 @@
                                             Click="RefreshExcelCloseList_Click"/>
                                     <Button x:Name="BulkCloseExcelButton" Content="批量关闭"
                                             Click="BulkCloseExcel_Click"/>
+                                    <Button x:Name="ToggleExcelCloseCustomReplyButton"
+                                            Content="自定义回复"
+                                            Click="ToggleExcelCloseCustomReply_Click"/>
                                     <Button x:Name="ToggleExcelCloseDetailColumnsButton"
                                             Content="展开详情"
                                             Click="ToggleExcelCloseDetailColumns_Click"/>
@@ -1048,7 +1241,158 @@
                             </Grid>
                         </Border>
 
-                        <Border Grid.Row="2" Style="{StaticResource Card}" Padding="0">
+                        <Border x:Name="ExcelCloseCustomReplyPanel"
+                                Grid.Row="2"
+                                Style="{StaticResource Card}"
+                                Margin="0,0,0,10"
+                                Visibility="Collapsed">
+                            <Grid>
+                                <Grid.RowDefinitions>
+                                    <RowDefinition Height="Auto"/>
+                                    <RowDefinition Height="Auto"/>
+                                </Grid.RowDefinitions>
+                                <Grid>
+                                    <StackPanel Orientation="Horizontal" VerticalAlignment="Center">
+                                        <TextBlock Text="自定义关闭回复"
+                                                   FontSize="15"
+                                                   FontWeight="SemiBold"/>
+                                        <TextBlock Text="  打开后，本页单条关闭和批量关闭会使用这套回复"
+                                                   Foreground="{StaticResource MutedBrush}"
+                                                   VerticalAlignment="Center"/>
+                                    </StackPanel>
+                                    <Button Content="恢复默认"
+                                            HorizontalAlignment="Right"
+                                            Padding="12,6"
+                                            Click="ResetExcelCloseCustomReply_Click"/>
+                                </Grid>
+                                <Grid Grid.Row="1" Margin="0,12,0,0">
+                                    <Grid.RowDefinitions>
+                                        <RowDefinition Height="Auto"/>
+                                        <RowDefinition Height="Auto"/>
+                                    </Grid.RowDefinitions>
+
+                                    <Border BorderBrush="#F0D3CC"
+                                            BorderThickness="0,1,0,0"
+                                            Padding="0,10,0,0">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Text="原因分析"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#3F3134"/>
+
+                                            <Grid Grid.Row="1" Margin="0,8,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="82"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="原因分类：" VerticalAlignment="Center"/>
+                                                <Grid Grid.Column="1"
+                                                      Width="380"
+                                                      HorizontalAlignment="Left">
+                                                    <TextBox x:Name="ExcelCloseCauseText"
+                                                             IsReadOnly="True"
+                                                             Height="32"
+                                                             Padding="8,4"
+                                                             VerticalContentAlignment="Center"/>
+                                                    <Button Width="32"
+                                                            Padding="0"
+                                                            HorizontalAlignment="Right"
+                                                            Style="{StaticResource PickerDropButton}"
+                                                            Content="⌄"
+                                                            Click="ToggleExcelCloseCausePopup_Click"/>
+                                                    <Popup x:Name="ExcelCloseCausePopup"
+                                                           PlacementTarget="{Binding ElementName=ExcelCloseCauseText}"
+                                                           Placement="Bottom"
+                                                           StaysOpen="False"
+                                                           AllowsTransparency="True">
+                                                        <Border Background="White"
+                                                                BorderBrush="#D6B9B3"
+                                                                BorderThickness="1"
+                                                                Width="330"
+                                                                MaxHeight="300">
+                                                            <ScrollViewer VerticalScrollBarVisibility="Auto">
+                                                                <TreeView x:Name="ExcelCloseCauseTree"
+                                                                          ItemsSource="{Binding CloseCauseOptions}"
+                                                                          SelectedItemChanged="ExcelCloseCauseTree_SelectedItemChanged"/>
+                                                            </ScrollViewer>
+                                                        </Border>
+                                                    </Popup>
+                                                </Grid>
+                                            </Grid>
+
+                                            <Grid Grid.Row="2" Margin="0,8,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="82"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="原因描述：" VerticalAlignment="Top" Margin="0,7,0,0"/>
+                                                <TextBox x:Name="ExcelCloseCauseDescriptionText"
+                                                         Grid.Column="1"
+                                                         Height="52"
+                                                         Padding="8,6"
+                                                         AcceptsReturn="True"
+                                                         TextWrapping="Wrap"
+                                                         VerticalScrollBarVisibility="Auto"/>
+                                            </Grid>
+                                        </Grid>
+                                    </Border>
+
+                                    <Border Grid.Row="1"
+                                            BorderBrush="#F0D3CC"
+                                            BorderThickness="0,1,0,0"
+                                            Padding="0,10,0,0"
+                                            Margin="0,12,0,0">
+                                        <Grid>
+                                            <Grid.RowDefinitions>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                                <RowDefinition Height="Auto"/>
+                                            </Grid.RowDefinitions>
+                                            <TextBlock Text="事件总结信息"
+                                                       FontWeight="SemiBold"
+                                                       Foreground="#3F3134"/>
+
+                                            <Grid Grid.Row="1" Margin="0,8,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="82"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="解决方法：" VerticalAlignment="Center"/>
+                                                <ComboBox x:Name="ExcelCloseSolveTypeComboBox"
+                                                          Grid.Column="1"
+                                                          Width="380"
+                                                          HorizontalAlignment="Left"
+                                                          Height="32"
+                                                          DisplayMemberPath="Value"
+                                                          SelectedValuePath="Key"
+                                                          ItemsSource="{Binding CloseSolveTypes}"/>
+                                            </Grid>
+
+                                            <Grid Grid.Row="2" Margin="0,8,0,0">
+                                                <Grid.ColumnDefinitions>
+                                                    <ColumnDefinition Width="82"/>
+                                                    <ColumnDefinition Width="*"/>
+                                                </Grid.ColumnDefinitions>
+                                                <TextBlock Text="解决方案：" VerticalAlignment="Top" Margin="0,7,0,0"/>
+                                                <TextBox x:Name="ExcelCloseSolutionText"
+                                                         Grid.Column="1"
+                                                         Height="60"
+                                                         Padding="8,6"
+                                                         AcceptsReturn="True"
+                                                         TextWrapping="Wrap"
+                                                         VerticalScrollBarVisibility="Auto"/>
+                                            </Grid>
+                                        </Grid>
+                                    </Border>
+                                </Grid>
+                            </Grid>
+                        </Border>
+
+                        <Border Grid.Row="3" Style="{StaticResource Card}" Padding="0">
                             <Grid>
                             <ScrollViewer x:Name="ExcelCloseTicketHorizontalScroller"
                                           HorizontalScrollBarVisibility="Disabled"

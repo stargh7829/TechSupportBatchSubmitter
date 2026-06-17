@@ -22,5 +22,6 @@ public interface ITicketPlatformClient : IPlatformSession
         CancellationToken cancellationToken = default);
     Task<CloseTicketResult> CloseTicketAsync(
         PendingTicketRow ticket,
+        CloseTicketSettings settings,
         CancellationToken cancellationToken = default);
 }

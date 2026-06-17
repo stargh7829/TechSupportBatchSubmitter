@@ -406,6 +406,7 @@ public sealed class SubmissionQueueTests
 
         public Task<CloseTicketResult> CloseTicketAsync(
             PendingTicketRow ticket,
+            CloseTicketSettings settings,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
     }

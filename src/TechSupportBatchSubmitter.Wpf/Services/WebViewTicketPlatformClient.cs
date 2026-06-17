@@ -439,6 +439,7 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
 
     public async Task<CloseTicketResult> CloseTicketAsync(
         PendingTicketRow ticket,
+        CloseTicketSettings settings,
         CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(ticket.CaseId) ||
@@ -451,6 +452,13 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
         {
             caseId = ticket.CaseId,
             title = ticket.CaseTitle,
+            causeTypeValue = settings.CauseTypeValue,
+            causeTypeName = settings.CauseTypeName,
+            causeTypePath = settings.CauseTypePath,
+            causeDescription = settings.CauseDescription,
+            solveTypeValue = settings.SolveTypeValue,
+            solveTypeName = settings.SolveTypeName,
+            solutionDescription = settings.SolutionDescription,
             solutionFormPath = SupportPlatformRoutes.BuildSolutionFormPath(ticket.CaseId)
         });
         var script =
@@ -590,6 +598,37 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
                     const findControl = name =>
                         form.querySelector(`[name="${name}"]`) ||
                         documentValue.getElementById(name);
+                    const readSetting = (name, fallback) => {
+                        const value = String(input?.[name] ?? "").trim();
+                        return value || fallback;
+                    };
+                    const resolveSelectValue = (control, configuredValue, configuredName, displayName) => {
+                        const value = String(configuredValue || "").trim();
+                        if (value) {
+                            return { value };
+                        }
+
+                        const targetName = String(configuredName || "").trim();
+                        if (!targetName || !control || control.tagName !== "SELECT") {
+                            return {
+                                error: `${displayName}未配置平台值，无法自动提交`
+                            };
+                        }
+
+                        const matched = Array.from(control.options || []).find(option => {
+                            const text = String(option.textContent || "").trim();
+                            return text === targetName ||
+                                text.endsWith(targetName) ||
+                                targetName.endsWith(text);
+                        });
+                        if (!matched) {
+                            return {
+                                error: `平台表单中未找到${displayName}“${targetName}”`
+                            };
+                        }
+
+                        return { value: String(matched.value || "").trim() };
+                    };
                     const required = [
                         "case_description",
                         "cause_type",
@@ -607,6 +646,34 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
                     }
 
                     const eventDescription = String(findControl("case_description").value || "");
+                    const causeTypeControl = findControl("cause_type");
+                    const solveTypeControl = findControl("solve_type");
+                    const causeType = resolveSelectValue(
+                        causeTypeControl,
+                        input.causeTypeValue,
+                        input.causeTypeName,
+                        "原因分类");
+                    if (causeType.error) {
+                        return {
+                            ok: false,
+                            kind: "protocol",
+                            error: causeType.error
+                        };
+                    }
+
+                    const solveType = resolveSelectValue(
+                        solveTypeControl,
+                        input.solveTypeValue,
+                        input.solveTypeName,
+                        "解决方法");
+                    if (solveType.error) {
+                        return {
+                            ok: false,
+                            kind: "protocol",
+                            error: solveType.error
+                        };
+                    }
+
                     if (!eventDescription.trim()) {
                         return {
                             ok: false,
@@ -621,10 +688,10 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
                     }
                     body.set("case_id", input.caseId);
                     body.set("case_description", eventDescription);
-                    body.set("cause_type", "21");
-                    body.set("cause_description", "已处理");
-                    body.set("solve_type", "2");
-                    body.set("solution_description", "已处理");
+                    body.set("cause_type", causeType.value);
+                    body.set("cause_description", readSetting("causeDescription", "已处理"));
+                    body.set("solve_type", solveType.value);
+                    body.set("solution_description", readSetting("solutionDescription", "已处理"));
 
                     saveIssued = true;
                     const saveResponse = await fetch("/xzsw/zcaseManager/saveSolutionCase.do", {

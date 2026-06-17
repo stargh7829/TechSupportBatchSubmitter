@@ -86,6 +86,28 @@ public sealed class TicketCloseQueueTests
         Assert.Single(platform.Attempts);
     }
 
+    [Fact]
+    public async Task RunAsync_ForwardsCustomCloseSettings()
+    {
+        var clock = new FakeClock(DateTimeOffset.UtcNow);
+        var platform = new FakePlatformClient(clock);
+        var rows = new[] { CreateRow("20600001") };
+        var settings = new CloseTicketSettings(
+            "",
+            "功能改进",
+            "软件 / 功能改进",
+            "已经调整为一级联审",
+            "1",
+            "修改软件",
+            "已按本次口径处理完成");
+        var queue = new TicketCloseQueue(platform, clock, TimeSpan.Zero);
+
+        await queue.RunAsync(rows, settings);
+
+        Assert.Same(settings, platform.LastSettings);
+        Assert.Equal(TicketCloseState.Succeeded, rows[0].CloseState);
+    }
+
     private static PendingTicketRow CreateRow(string caseId) => new()
     {
         CaseId = caseId,
@@ -122,6 +144,7 @@ public sealed class TicketCloseQueueTests
         public string? FailedCaseId { get; init; }
         public string? UnknownCaseId { get; init; }
         public string? ExpiredCaseId { get; init; }
+        public CloseTicketSettings? LastSettings { get; private set; }
         public List<DateTimeOffset> Attempts { get; } = [];
 
         public event EventHandler? SessionExpired
@@ -132,9 +155,11 @@ public sealed class TicketCloseQueueTests
 
         public Task<CloseTicketResult> CloseTicketAsync(
             PendingTicketRow ticket,
+            CloseTicketSettings settings,
             CancellationToken cancellationToken = default)
         {
             Attempts.Add(_clock.UtcNow);
+            LastSettings = settings;
             if (ticket.CaseId == UnknownCaseId)
             {
                 throw new SubmissionOutcomeUnknownException("结果不明确");

@@ -51,8 +51,10 @@ public sealed class TicketCloseQueue
 
     public async Task RunAsync(
         IReadOnlyCollection<PendingTicketRow> tickets,
+        CloseTicketSettings? settings = null,
         CancellationToken cancellationToken = default)
     {
+        settings ??= CloseTicketSettings.Default;
         if (_historyStore is not null)
         {
             await _historyStore.InitializeAsync(cancellationToken);
@@ -83,7 +85,7 @@ public sealed class TicketCloseQueue
 
             try
             {
-                var result = await _platformClient.CloseTicketAsync(ticket, cancellationToken);
+                var result = await _platformClient.CloseTicketAsync(ticket, settings, cancellationToken);
                 ticket.CloseMessage = result.Message;
                 if (result.IsClosed)
                 {
