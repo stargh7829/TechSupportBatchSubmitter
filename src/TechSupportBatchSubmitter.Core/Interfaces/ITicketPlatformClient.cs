@@ -12,7 +12,6 @@ public interface ITicketPlatformClient : IPlatformSession
         CancellationToken cancellationToken = default);
     Task<VerificationResult> VerifyCreatedAsync(
         string caseId,
-        TicketRow expected,
         CancellationToken cancellationToken = default);
     Task<PendingTicketQueryResult> QueryPendingAsync(
         string title,

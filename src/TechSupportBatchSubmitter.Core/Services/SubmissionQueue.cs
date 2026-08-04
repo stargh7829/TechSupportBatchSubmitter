@@ -8,6 +8,7 @@ public sealed class SubmissionQueue : ISubmissionQueue
 {
     public static readonly DelaySchedule DefaultInterval =
         new(TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(90));
+    public static readonly TimeSpan CreationVerificationDelay = TimeSpan.FromSeconds(2);
 
     private readonly IWorkbookRepository _workbookRepository;
     private readonly ISubmissionJournal _journal;
@@ -280,7 +281,9 @@ public sealed class SubmissionQueue : ISubmissionQueue
             cancellationToken: cancellationToken);
         await PersistRowAsync(workbook, row, cancellationToken);
 
-        var verification = await _platformClient.VerifyCreatedAsync(caseId, row, cancellationToken);
+        EmitLog(row, $"保存请求已返回，{CreationVerificationDelay.TotalSeconds:0} 秒后按编号 {caseId} 核验");
+        await _clock.DelayAsync(CreationVerificationDelay, cancellationToken);
+        var verification = await _platformClient.VerifyCreatedAsync(caseId, cancellationToken);
         if (!verification.IsCreated)
         {
             row.State = SubmissionState.PendingVerification;
@@ -337,7 +340,6 @@ public sealed class SubmissionQueue : ISubmissionQueue
             EmitLog(row, $"正在核验上次运行保留的编号 {entry.CandidateCaseId}");
             var verification = await _platformClient.VerifyCreatedAsync(
                 entry.CandidateCaseId,
-                row,
                 cancellationToken);
             if (verification.IsCreated)
             {

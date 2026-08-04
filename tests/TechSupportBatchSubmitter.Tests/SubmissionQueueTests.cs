@@ -105,6 +105,28 @@ public sealed class SubmissionQueueTests
     }
 
     [Fact]
+    public async Task RunAsync_WaitsTwoSecondsBeforeCreationVerification()
+    {
+        var startedAt = new DateTimeOffset(2026, 8, 3, 9, 0, 0, TimeSpan.Zero);
+        var clock = new FakeClock(startedAt);
+        var workbookRepository = new FakeWorkbookRepository();
+        var journal = new InMemoryJournal();
+        var platform = new FakePlatformClient(clock);
+        var row = CreateRow(2, "1");
+        var workbook = new WorkbookLoadResult("C:\\test.xlsx", "Sheet1", [row], null);
+        var resolved = new Dictionary<string, ResolvedTicket>
+        {
+            [row.Fingerprint] = CreateResolved(row)
+        };
+        var queue = new SubmissionQueue(workbookRepository, journal, platform, clock, TimeSpan.Zero);
+
+        await queue.RunAsync(workbook, resolved, SubmissionRunMode.Pending);
+
+        Assert.Equal(startedAt, Assert.Single(platform.SaveAttempts));
+        Assert.Equal(startedAt.AddSeconds(2), Assert.Single(platform.VerificationAttempts));
+    }
+
+    [Fact]
     public async Task RunAsync_CrashRecoveryVerifiesOldNumberWithoutSavingAgain()
     {
         var clock = new FakeClock(DateTimeOffset.UtcNow);
@@ -343,6 +365,7 @@ public sealed class SubmissionQueueTests
         public string? UnknownSequence { get; init; }
         public string? SessionExpirySequence { get; init; }
         public List<DateTimeOffset> SaveAttempts { get; } = [];
+        public List<DateTimeOffset> VerificationAttempts { get; } = [];
         public HashSet<string> ExistingIds { get; } = [];
         public event EventHandler? SessionExpired
         {
@@ -388,11 +411,13 @@ public sealed class SubmissionQueueTests
 
         public Task<VerificationResult> VerifyCreatedAsync(
             string caseId,
-            TicketRow expected,
-            CancellationToken cancellationToken = default) =>
-            Task.FromResult(new VerificationResult(
+            CancellationToken cancellationToken = default)
+        {
+            VerificationAttempts.Add(_clock.UtcNow);
+            return Task.FromResult(new VerificationResult(
                 ExistingIds.Contains(caseId),
                 ExistingIds.Contains(caseId) ? "已创建" : "未创建"));
+        }
 
         public Task<PendingTicketQueryResult> QueryPendingAsync(
             string title,

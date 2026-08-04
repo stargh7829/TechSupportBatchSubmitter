@@ -31,7 +31,7 @@
     <AssemblyName>TechSupportBatchSubmitter</AssemblyName>
     <Product>技术支持批量提交工具</Product>
     <Company>Internal Tools</Company>
-    <Version>1.4.0</Version>
+    <Version>1.4.1</Version>
   </PropertyGroup>
 
 </Project>

@@ -205,7 +205,6 @@ public sealed class TicketCloseQueueTests
 
         public Task<VerificationResult> VerifyCreatedAsync(
             string caseId,
-            TicketRow expected,
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 

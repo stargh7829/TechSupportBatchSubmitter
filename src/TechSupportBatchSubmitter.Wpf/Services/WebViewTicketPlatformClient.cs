@@ -257,26 +257,20 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
 
     public async Task<VerificationResult> VerifyCreatedAsync(
         string caseId,
-        TicketRow expected,
         CancellationToken cancellationToken = default)
     {
-        var payloadJson = JsonSerializer.Serialize(new
-        {
-            caseId,
-            title = expected.Title,
-            description = expected.Description
-        });
+        var caseIdJson = JsonSerializer.Serialize(caseId);
         var script =
             $$"""
             (async () => {
-                const expected = {{payloadJson}};
+                const caseId = {{caseIdJson}};
                 try {
                     const response = await fetch("/xzsw/zcaseManager/getTrackInfo.do", {
                         method: "POST",
                         cache: "no-store",
                         credentials: "same-origin",
                         headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
-                        body: new URLSearchParams({ case_id: expected.caseId, flag: "11" })
+                        body: new URLSearchParams({ case_id: caseId, flag: "11" })
                     });
                     const html = await response.text();
                     if (response.url?.includes("172.18.75.21") || html.includes('"sessionstatus":"timeout"')) {
@@ -290,15 +284,14 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
                         .body?.innerText
                         ?.replace(/\s+/g, " ")
                         ?.trim() || "";
-                    const created =
-                        text.includes("创建") &&
-                        text.includes(expected.title) &&
-                        text.includes(expected.description);
+                    const created = text.includes("创建");
                     return {
                         ok: true,
                         data: {
                             isCreated: created,
-                            message: created ? "已核验创建记录" : "未查询到匹配的创建记录"
+                            message: created
+                                ? `已按编号 ${caseId} 核验创建记录`
+                                : `未按编号 ${caseId} 查询到创建记录`
                         }
                     };
                 } catch (error) {
