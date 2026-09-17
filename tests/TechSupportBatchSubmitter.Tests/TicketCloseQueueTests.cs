@@ -208,6 +208,17 @@ public sealed class TicketCloseQueueTests
             CancellationToken cancellationToken = default) =>
             throw new NotSupportedException();
 
+        public Task<AcceptanceResult> AcceptAndHandleAsync(
+            string caseId,
+            string processingRemark,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
+        public Task<AcceptanceResult> VerifyAcceptedAndHandledAsync(
+            string caseId,
+            CancellationToken cancellationToken = default) =>
+            throw new NotSupportedException();
+
         public Task<PendingTicketQueryResult> QueryPendingAsync(
             string title,
             CancellationToken cancellationToken = default) =>

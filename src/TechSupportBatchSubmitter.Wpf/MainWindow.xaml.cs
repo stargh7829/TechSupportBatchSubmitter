@@ -328,7 +328,7 @@ public partial class MainWindow : Window
         }
 
         await EnsureSupportSessionAsync(token);
-        AddLog("自动预检必填字段及平台人员、事件类型、所属系统");
+        AddLog("自动预检必填字段及平台人员、事件类型、处理类型、处理说明、所属系统");
         _resolvedTickets = await _queue.ValidateAsync(_workbook, token);
         _validated = true;
         RefreshStatistics();
@@ -361,11 +361,15 @@ public partial class MainWindow : Window
         }
 
         var count = _rows.Count(row => row.State == SubmissionState.Pending);
-        if (count == 0)
+        var acceptanceContinuationCount = _rows.Count(row => row.AcceptanceState is
+            TicketAcceptanceState.Processing or
+            TicketAcceptanceState.Failed or
+            TicketAcceptanceState.PendingVerification);
+        if (count == 0 && acceptanceContinuationCount == 0)
         {
             ShowInfo(
                 "提示",
-                "预检后没有可提交记录，请查看“校验失败”及失败原因。");
+                "预检后没有可提交或可继续受理并处理的记录，请查看“校验失败”及失败原因。");
             return;
         }
 
@@ -377,7 +381,13 @@ public partial class MainWindow : Window
 
         var result = ShowConfirm(
             "确认真实提交",
-            $"即将向技术支持系统提交 {count} 条记录。\n" +
+            (count > 0
+                ? $"即将向技术支持系统提交 {count} 条记录。\n"
+                : string.Empty) +
+            (acceptanceContinuationCount > 0
+                ? $"将继续处理 {acceptanceContinuationCount} 条已有技术支持编号的记录。\n"
+                : string.Empty) +
+            $"每条创建核验成功后将立即受理并处理，并按 Excel 的“处理说明”写入平台。\n" +
             $"第一条立即提交，之后每条{DescribeInterval(submissionInterval)}。\n\n确认开始吗？");
         if (result)
         {
@@ -1650,7 +1660,9 @@ public partial class MainWindow : Window
         ValidationFailedText.Text =
             _rows.Count(row => row.State == SubmissionState.ValidationFailed).ToString();
         PendingVerificationText.Text =
-            _rows.Count(row => row.State == SubmissionState.PendingVerification).ToString();
+            _rows.Count(row => row.State is
+                SubmissionState.PendingVerification or
+                SubmissionState.PendingAcceptanceVerification).ToString();
     }
 
     private void SetUiState()
@@ -1666,7 +1678,11 @@ public partial class MainWindow : Window
         ExcelCloseCustomReplyPanel.IsEnabled = !_running;
         StartButton.IsEnabled =
             hasWorkbook && !_running && _queue is not null &&
-            _rows.Any(row => row.State == SubmissionState.Pending);
+            _rows.Any(row => row.State == SubmissionState.Pending ||
+                row.AcceptanceState is
+                    TicketAcceptanceState.Processing or
+                    TicketAcceptanceState.Failed or
+                    TicketAcceptanceState.PendingVerification);
         RetryButton.IsEnabled =
             hasWorkbook && !_running && _queue is not null &&
             _rows.Any(row => row.State == SubmissionState.Failed);

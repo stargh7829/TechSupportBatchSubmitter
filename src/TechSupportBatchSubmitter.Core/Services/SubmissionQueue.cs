@@ -66,6 +66,11 @@ public sealed class SubmissionQueue : ISubmissionQueue
     {
         var resolved = new Dictionary<string, ResolvedTicket>(StringComparer.Ordinal);
         var changed = new List<TicketRow>();
+        var session = await _platformClient.CheckSessionAsync(cancellationToken);
+        if (!session.IsSupportPlatformReady || !session.IsAuthenticated)
+        {
+            throw new PlatformSessionExpiredException("技术支持系统登录已失效，请重新登录后再校验清单。");
+        }
 
         try
         {
@@ -86,6 +91,17 @@ public sealed class SubmissionQueue : ISubmissionQueue
                 try
                 {
                     var ticket = await _platformClient.ResolveTicketAsync(row, cancellationToken);
+                    if (!IsCurrentUserAssignee(session.DisplayName, ticket.Assignee.Text))
+                    {
+                        row.State = SubmissionState.ValidationFailed;
+                        row.FailureReason =
+                            $"指定受理人“{ticket.Assignee.Text}”与当前登录人“{session.DisplayName}”不一致，无法自动受理并处理";
+                        changed.Add(row);
+                        EmitLog(row, row.FailureReason, isError: true);
+                        EmitProgress(workbook.Rows, row.ExcelRowNumber);
+                        continue;
+                    }
+
                     resolved[row.Fingerprint] = ticket;
                     if (row.State == SubmissionState.ValidationFailed)
                     {
@@ -140,6 +156,7 @@ public sealed class SubmissionQueue : ISubmissionQueue
         }
 
         await RecoverUncertainRowsAsync(workbook, cancellationToken);
+        await ResumeAcceptanceRowsAsync(workbook, cancellationToken);
 
         var candidates = workbook.Rows
             .Where(row => string.IsNullOrWhiteSpace(row.TicketNumber))
@@ -174,18 +191,34 @@ public sealed class SubmissionQueue : ISubmissionQueue
             }
             catch (SubmissionOutcomeUnknownException ex)
             {
-                row.State = SubmissionState.PendingVerification;
-                row.FailureReason = ex.Message;
+                var isAcceptanceStep = !string.IsNullOrWhiteSpace(row.TicketNumber);
+                row.State = isAcceptanceStep
+                    ? SubmissionState.PendingAcceptanceVerification
+                    : SubmissionState.PendingVerification;
+                if (isAcceptanceStep)
+                {
+                    row.AcceptanceState = TicketAcceptanceState.PendingVerification;
+                    row.AcceptanceFailureReason = ex.Message;
+                }
+                else
+                {
+                    row.FailureReason = ex.Message;
+                }
                 await _journal.MarkStateAsync(
                     workbook.WorkbookPath,
                     workbook.WorksheetName,
                     row,
-                    SubmissionState.PendingVerification,
+                    row.State,
                     ex.Message,
                     cancellationToken);
                 await PersistRowAsync(workbook, row, cancellationToken);
                 await RecordSubmissionHistoryAsync(workbook, row, ex.Message, cancellationToken);
-                EmitLog(row, "保存结果不确定，已暂停且不会自动换号重提。", isError: true);
+                EmitLog(
+                    row,
+                    isAcceptanceStep
+                        ? "受理并处理结果不确定，已暂停且不会自动重复受理。"
+                        : "保存结果不确定，已暂停且不会自动换号重提。",
+                    isError: true);
                 throw;
             }
             catch (PlatformProtocolException ex)
@@ -302,18 +335,23 @@ public sealed class SubmissionQueue : ISubmissionQueue
         }
 
         row.TicketNumber = caseId;
-        row.State = SubmissionState.Succeeded;
+        row.State = SubmissionState.PendingAcceptance;
         row.SubmittedAt = _clock.UtcNow.ToLocalTime();
         row.FailureReason = null;
+        row.AcceptanceState = TicketAcceptanceState.Processing;
+        row.AcceptedAt = null;
+        row.AcceptanceFailureReason = null;
         await _journal.MarkStateAsync(
             workbook.WorkbookPath,
             workbook.WorksheetName,
             row,
-            SubmissionState.Succeeded,
+            SubmissionState.PendingAcceptance,
             cancellationToken: cancellationToken);
         await PersistRowAsync(workbook, row, cancellationToken);
-        await RecordSubmissionHistoryAsync(workbook, row, "提交成功", cancellationToken);
-        EmitLog(row, $"提交成功，技术支持编号 {caseId}");
+        await RecordSubmissionHistoryAsync(workbook, row, "事件申请已创建，待受理并处理", cancellationToken);
+        EmitLog(row, $"事件申请已创建，技术支持编号 {caseId}，正在受理并处理");
+
+        await ProcessAcceptanceAsync(workbook, row, cancellationToken);
     }
 
     private async Task RecoverUncertainRowsAsync(
@@ -332,7 +370,9 @@ public sealed class SubmissionQueue : ISubmissionQueue
                 entry.State is not (
                     SubmissionState.Submitting or
                     SubmissionState.PendingVerification or
-                    SubmissionState.Succeeded))
+                    SubmissionState.Succeeded or
+                    SubmissionState.PendingAcceptance or
+                    SubmissionState.PendingAcceptanceVerification))
             {
                 continue;
             }
@@ -344,18 +384,43 @@ public sealed class SubmissionQueue : ISubmissionQueue
             if (verification.IsCreated)
             {
                 row.TicketNumber = entry.CandidateCaseId;
-                row.State = SubmissionState.Succeeded;
                 row.SubmittedAt ??= entry.UpdatedAt.ToLocalTime();
                 row.FailureReason = null;
+                if (entry.State is SubmissionState.PendingAcceptance or
+                    SubmissionState.PendingAcceptanceVerification)
+                {
+                    row.State = entry.State;
+                    row.AcceptanceState = entry.State == SubmissionState.PendingAcceptanceVerification
+                        ? TicketAcceptanceState.PendingVerification
+                        : TicketAcceptanceState.Processing;
+                    row.AcceptanceFailureReason = entry.LastError;
+                }
+                else
+                {
+                    // Journal records from versions before automatic acceptance retain their original meaning.
+                    row.State = SubmissionState.Succeeded;
+                    row.AcceptanceState = TicketAcceptanceState.NotStarted;
+                    row.AcceptanceFailureReason = null;
+                }
                 await _journal.MarkStateAsync(
                     workbook.WorkbookPath,
                     workbook.WorksheetName,
                     row,
-                    SubmissionState.Succeeded,
+                    row.State,
                     cancellationToken: cancellationToken);
                 await PersistRowAsync(workbook, row, cancellationToken);
-                await RecordSubmissionHistoryAsync(workbook, row, "崩溃恢复核验成功", cancellationToken);
-                EmitLog(row, $"已恢复成功编号 {entry.CandidateCaseId}");
+                await RecordSubmissionHistoryAsync(
+                    workbook,
+                    row,
+                    row.State == SubmissionState.Succeeded
+                        ? "崩溃恢复核验成功"
+                        : "已恢复已创建办件，待受理并处理",
+                    cancellationToken);
+                EmitLog(
+                    row,
+                    row.State == SubmissionState.Succeeded
+                        ? $"已恢复成功编号 {entry.CandidateCaseId}"
+                        : $"已恢复技术支持编号 {entry.CandidateCaseId}，将继续受理并处理");
             }
             else
             {
@@ -373,6 +438,134 @@ public sealed class SubmissionQueue : ISubmissionQueue
                 EmitLog(row, "旧编号仍未查询到创建记录，不会自动重新提交。", isError: true);
             }
         }
+    }
+
+    private async Task ResumeAcceptanceRowsAsync(
+        WorkbookLoadResult workbook,
+        CancellationToken cancellationToken)
+    {
+        var candidates = workbook.Rows
+            .Where(row => !string.IsNullOrWhiteSpace(row.TicketNumber))
+            .Where(row => row.AcceptanceState is
+                TicketAcceptanceState.Processing or
+                TicketAcceptanceState.Failed or
+                TicketAcceptanceState.PendingVerification)
+            .ToList();
+
+        foreach (var row in candidates)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            EmitProgress(workbook.Rows, row.ExcelRowNumber);
+
+            if (row.AcceptanceState == TicketAcceptanceState.PendingVerification)
+            {
+                var verification = await _platformClient.VerifyAcceptedAndHandledAsync(
+                    row.TicketNumber!,
+                    cancellationToken);
+                if (verification.IsAccepted)
+                {
+                    await MarkAcceptanceSucceededAsync(workbook, row, verification.Message, cancellationToken);
+                    continue;
+                }
+
+                row.State = SubmissionState.PendingAcceptanceVerification;
+                row.AcceptanceFailureReason = verification.Message;
+                await _journal.MarkStateAsync(
+                    workbook.WorkbookPath,
+                    workbook.WorksheetName,
+                    row,
+                    SubmissionState.PendingAcceptanceVerification,
+                    verification.Message,
+                    cancellationToken);
+                await PersistRowAsync(workbook, row, cancellationToken);
+                EmitLog(row, "受理并处理结果仍无法确认，未自动重复提交。", isError: true);
+                throw new SubmissionOutcomeUnknownException(verification.Message);
+            }
+
+            if (row.AcceptanceState == TicketAcceptanceState.Processing)
+            {
+                var verification = await _platformClient.VerifyAcceptedAndHandledAsync(
+                    row.TicketNumber!,
+                    cancellationToken);
+                if (verification.IsAccepted)
+                {
+                    await MarkAcceptanceSucceededAsync(workbook, row, verification.Message, cancellationToken);
+                    continue;
+                }
+            }
+
+            await ProcessAcceptanceAsync(workbook, row, cancellationToken);
+        }
+    }
+
+    private async Task ProcessAcceptanceAsync(
+        WorkbookLoadResult workbook,
+        TicketRow row,
+        CancellationToken cancellationToken)
+    {
+        if (string.IsNullOrWhiteSpace(row.TicketNumber))
+        {
+            throw new InvalidOperationException("事件申请尚未生成技术支持编号，无法执行受理并处理。");
+        }
+
+        row.State = SubmissionState.PendingAcceptance;
+        row.AcceptanceState = TicketAcceptanceState.Processing;
+        row.AcceptedAt = null;
+        row.AcceptanceFailureReason = null;
+        await _journal.MarkStateAsync(
+            workbook.WorkbookPath,
+            workbook.WorksheetName,
+            row,
+            SubmissionState.PendingAcceptance,
+            cancellationToken: cancellationToken);
+        await PersistRowAsync(workbook, row, cancellationToken);
+        EmitLog(row, $"正在受理并处理技术支持编号 {row.TicketNumber}");
+
+        var result = await _platformClient.AcceptAndHandleAsync(
+            row.TicketNumber,
+            row.ProcessingRemark,
+            cancellationToken);
+        if (result.IsAccepted)
+        {
+            await MarkAcceptanceSucceededAsync(workbook, row, result.Message, cancellationToken);
+            return;
+        }
+
+        row.State = SubmissionState.PendingAcceptance;
+        row.AcceptanceState = TicketAcceptanceState.Failed;
+        row.AcceptanceFailureReason = result.Message;
+        await _journal.MarkStateAsync(
+            workbook.WorkbookPath,
+            workbook.WorksheetName,
+            row,
+            SubmissionState.PendingAcceptance,
+            result.Message,
+            cancellationToken);
+        await PersistRowAsync(workbook, row, cancellationToken);
+        await RecordSubmissionHistoryAsync(workbook, row, result.Message, cancellationToken);
+        EmitLog(row, $"受理并处理失败，保留编号可在下次运行时补做：{result.Message}", isError: true);
+    }
+
+    private async Task MarkAcceptanceSucceededAsync(
+        WorkbookLoadResult workbook,
+        TicketRow row,
+        string message,
+        CancellationToken cancellationToken)
+    {
+        row.State = SubmissionState.Succeeded;
+        row.AcceptanceState = TicketAcceptanceState.Succeeded;
+        row.AcceptedAt = _clock.UtcNow.ToLocalTime();
+        row.FailureReason = null;
+        row.AcceptanceFailureReason = null;
+        await _journal.MarkStateAsync(
+            workbook.WorkbookPath,
+            workbook.WorksheetName,
+            row,
+            SubmissionState.Succeeded,
+            cancellationToken: cancellationToken);
+        await PersistRowAsync(workbook, row, cancellationToken);
+        await RecordSubmissionHistoryAsync(workbook, row, "提交并完成受理并处理", cancellationToken);
+        EmitLog(row, $"提交及受理并处理完成，技术支持编号 {row.TicketNumber}（{message}）");
     }
 
     private async Task WaitForSubmissionIntervalAsync(CancellationToken cancellationToken)
@@ -438,7 +631,9 @@ public sealed class SubmissionQueue : ISubmissionQueue
                 rows.Count(row => row.State == SubmissionState.Pending),
                 rows.Count(row => row.State == SubmissionState.Failed),
                 rows.Count(row => row.State == SubmissionState.ValidationFailed),
-                rows.Count(row => row.State == SubmissionState.PendingVerification),
+                rows.Count(row => row.State is
+                    SubmissionState.PendingVerification or
+                    SubmissionState.PendingAcceptanceVerification),
                 currentRow));
     }
 
@@ -448,5 +643,21 @@ public sealed class SubmissionQueue : ISubmissionQueue
             .Replace("\n", " ", StringComparison.Ordinal)
             .Trim();
         return message.Length <= 300 ? message : message[..300];
+    }
+
+    private static bool IsCurrentUserAssignee(string displayName, string assignee)
+    {
+        var current = GetPersonName(displayName);
+        var target = GetPersonName(assignee);
+        return !string.IsNullOrWhiteSpace(current) &&
+            string.Equals(current, target, StringComparison.Ordinal);
+    }
+
+    private static string GetPersonName(string value)
+    {
+        return (value ?? string.Empty)
+            .Trim()
+            .Split(['-', '－'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .LastOrDefault() ?? string.Empty;
     }
 }

@@ -574,7 +574,7 @@
                                 Padding="8,2"
                                 Margin="12,0,0,0"
                                 VerticalAlignment="Center">
-                            <TextBlock Text="v1.4.1"
+                            <TextBlock Text="v1.4.2"
                                        Foreground="#8A5A00"
                                        FontSize="12"
                                        FontWeight="SemiBold"/>
@@ -822,6 +822,8 @@
                                     <DataGridTextColumn Header="发现人" Binding="{Binding Discoverer}" Width="95"/>
                                     <DataGridTextColumn Header="申请人" Binding="{Binding Applicant}" Width="95"/>
                                     <DataGridTextColumn Header="事件类型" Binding="{Binding EventType}" Width="100"/>
+                                    <DataGridTextColumn Header="处理类型" Binding="{Binding ProcessingType}" Width="78"/>
+                                    <DataGridTextColumn Header="处理说明" Binding="{Binding ProcessingRemark}" Width="2*"/>
                                     <DataGridTextColumn Header="所属系统" Binding="{Binding SystemName}" Width="110"/>
                                     <DataGridTextColumn Header="指定受理人" Binding="{Binding Assignee}" Width="105"/>
                                     <DataGridTextColumn Header="状态" Binding="{Binding StateText}" Width="78"/>
@@ -830,6 +832,11 @@
                                                         Binding="{Binding SubmittedAt, StringFormat={}{0:yyyy-MM-dd HH:mm:ss}}"
                                                         Width="145"/>
                                     <DataGridTextColumn Header="失败原因" Binding="{Binding FailureReason}" Width="2*"/>
+                                    <DataGridTextColumn Header="受理并处理状态" Binding="{Binding AcceptanceStateText}" Width="105"/>
+                                    <DataGridTextColumn Header="受理并处理完成时间"
+                                                        Binding="{Binding AcceptedAt, StringFormat={}{0:yyyy-MM-dd HH:mm:ss}}"
+                                                        Width="155"/>
+                                    <DataGridTextColumn Header="受理并处理失败原因" Binding="{Binding AcceptanceFailureReason}" Width="2*"/>
                                     <DataGridTextColumn Header="关闭状态" Binding="{Binding CloseStateText}" Width="86"/>
                                     <DataGridTextColumn Header="实际关闭时间"
                                                         Binding="{Binding ClosedAt, StringFormat={}{0:yyyy-MM-dd HH:mm:ss}}"

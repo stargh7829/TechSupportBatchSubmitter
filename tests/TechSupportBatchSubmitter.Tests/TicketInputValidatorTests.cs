@@ -23,6 +23,8 @@ public sealed class TicketInputValidatorTests
             Discoverer = row.Discoverer,
             Applicant = row.Applicant,
             EventType = row.EventType,
+            ProcessingType = row.ProcessingType,
+            ProcessingRemark = row.ProcessingRemark,
             SystemName = row.SystemName,
             Assignee = string.Empty,
             Description = row.Description,
@@ -59,6 +61,34 @@ public sealed class TicketInputValidatorTests
         Assert.Contains("技术支持编号格式异常", error);
     }
 
+    [Fact]
+    public void Validate_WhenProcessingTypeIsInvalid_ReturnsProcessingTypeError()
+    {
+        var row = CreateRow();
+        row = Clone(row);
+        row = new TicketRow
+        {
+            ExcelRowNumber = row.ExcelRowNumber,
+            Sequence = row.Sequence,
+            Title = row.Title,
+            Discoverer = row.Discoverer,
+            Applicant = row.Applicant,
+            EventType = row.EventType,
+            ProcessingType = "其他",
+            ProcessingRemark = row.ProcessingRemark,
+            SystemName = row.SystemName,
+            Assignee = row.Assignee,
+            Description = row.Description,
+            OriginalDate = row.OriginalDate,
+            Fingerprint = row.Fingerprint,
+            State = row.State
+        };
+
+        var error = TicketInputValidator.Validate(row);
+
+        Assert.Contains("处理类型无效", error);
+    }
+
     private static TicketRow CreateRow() => new()
     {
         ExcelRowNumber = 2,
@@ -67,6 +97,8 @@ public sealed class TicketInputValidatorTests
         Discoverer = "发现人",
         Applicant = "申请人",
         EventType = "数据疑问",
+        ProcessingType = "运营",
+        ProcessingRemark = "已处理",
         SystemName = "网签合同",
         Assignee = "受理人",
         Description = "测试描述",
@@ -83,6 +115,8 @@ public sealed class TicketInputValidatorTests
         Discoverer = row.Discoverer,
         Applicant = row.Applicant,
         EventType = row.EventType,
+        ProcessingType = row.ProcessingType,
+        ProcessingRemark = row.ProcessingRemark,
         SystemName = row.SystemName,
         Assignee = row.Assignee,
         Description = row.Description,

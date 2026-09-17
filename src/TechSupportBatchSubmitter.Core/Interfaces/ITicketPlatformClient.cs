@@ -13,6 +13,13 @@ public interface ITicketPlatformClient : IPlatformSession
     Task<VerificationResult> VerifyCreatedAsync(
         string caseId,
         CancellationToken cancellationToken = default);
+    Task<AcceptanceResult> AcceptAndHandleAsync(
+        string caseId,
+        string processingRemark,
+        CancellationToken cancellationToken = default);
+    Task<AcceptanceResult> VerifyAcceptedAndHandledAsync(
+        string caseId,
+        CancellationToken cancellationToken = default);
     Task<PendingTicketQueryResult> QueryPendingAsync(
         string title,
         CancellationToken cancellationToken = default);

@@ -29,8 +29,14 @@ public sealed class SubmissionQueueTests
         await queue.RunAsync(workbook, resolved, SubmissionRunMode.Pending);
 
         Assert.Equal(2, platform.SaveAttempts.Count);
+        Assert.Equal(2, platform.AcceptanceAttempts.Count);
         Assert.Equal(TimeSpan.FromMinutes(1), platform.SaveAttempts[1] - platform.SaveAttempts[0]);
-        Assert.All(rows, row => Assert.Equal(SubmissionState.Succeeded, row.State));
+        Assert.All(rows, row =>
+        {
+            Assert.Equal(SubmissionState.Succeeded, row.State);
+            Assert.Equal(TicketAcceptanceState.Succeeded, row.AcceptanceState);
+            Assert.False(string.IsNullOrWhiteSpace(row.TicketNumber));
+        });
     }
 
     [Fact]
@@ -124,6 +130,95 @@ public sealed class SubmissionQueueTests
 
         Assert.Equal(startedAt, Assert.Single(platform.SaveAttempts));
         Assert.Equal(startedAt.AddSeconds(2), Assert.Single(platform.VerificationAttempts));
+        Assert.Equal(startedAt.AddSeconds(2), Assert.Single(platform.AcceptanceAttempts));
+    }
+
+    [Fact]
+    public async Task RunAsync_AcceptanceFailureKeepsTicketNumberForNextRun()
+    {
+        var clock = new FakeClock(DateTimeOffset.UtcNow);
+        var workbookRepository = new FakeWorkbookRepository();
+        var journal = new InMemoryJournal();
+        var platform = new FakePlatformClient(clock) { AcceptanceFailSequence = "1" };
+        var row = CreateRow(2, "1");
+        var workbook = new WorkbookLoadResult("C:\\test.xlsx", "Sheet1", [row], null);
+        var queue = new SubmissionQueue(workbookRepository, journal, platform, clock, TimeSpan.Zero);
+
+        await queue.RunAsync(
+            workbook,
+            new Dictionary<string, ResolvedTicket> { [row.Fingerprint] = CreateResolved(row) },
+            SubmissionRunMode.Pending);
+
+        Assert.False(string.IsNullOrWhiteSpace(row.TicketNumber));
+        Assert.Equal(SubmissionState.PendingAcceptance, row.State);
+        Assert.Equal(TicketAcceptanceState.Failed, row.AcceptanceState);
+        Assert.Equal("平台明确返回受理并处理失败", row.AcceptanceFailureReason);
+        Assert.Single(platform.SaveAttempts);
+        Assert.Single(platform.AcceptanceAttempts);
+    }
+
+    [Fact]
+    public async Task RunAsync_AcceptanceUnknownOutcomeStopsWithoutRepeatingAcceptance()
+    {
+        var clock = new FakeClock(DateTimeOffset.UtcNow);
+        var workbookRepository = new FakeWorkbookRepository();
+        var journal = new InMemoryJournal();
+        var platform = new FakePlatformClient(clock) { AcceptanceUnknownSequence = "1" };
+        var row = CreateRow(2, "1");
+        var workbook = new WorkbookLoadResult("C:\\test.xlsx", "Sheet1", [row], null);
+        var queue = new SubmissionQueue(workbookRepository, journal, platform, clock, TimeSpan.Zero);
+
+        await Assert.ThrowsAsync<SubmissionOutcomeUnknownException>(() => queue.RunAsync(
+            workbook,
+            new Dictionary<string, ResolvedTicket> { [row.Fingerprint] = CreateResolved(row) },
+            SubmissionRunMode.Pending));
+
+        Assert.False(string.IsNullOrWhiteSpace(row.TicketNumber));
+        Assert.Equal(SubmissionState.PendingAcceptanceVerification, row.State);
+        Assert.Equal(TicketAcceptanceState.PendingVerification, row.AcceptanceState);
+        Assert.Single(platform.AcceptanceAttempts);
+    }
+
+    [Fact]
+    public async Task RunAsync_ResumesFailedAcceptanceWithoutSubmittingAnotherEvent()
+    {
+        var clock = new FakeClock(DateTimeOffset.UtcNow);
+        var workbookRepository = new FakeWorkbookRepository();
+        var journal = new InMemoryJournal();
+        var platform = new FakePlatformClient(clock);
+        var row = CreateRow(2, "1");
+        row.TicketNumber = "20601234";
+        row.State = SubmissionState.PendingAcceptance;
+        row.AcceptanceState = TicketAcceptanceState.Failed;
+        row.AcceptanceFailureReason = "上次失败";
+        var workbook = new WorkbookLoadResult("C:\\test.xlsx", "Sheet1", [row], null);
+        var queue = new SubmissionQueue(workbookRepository, journal, platform, clock, TimeSpan.Zero);
+
+        await queue.RunAsync(workbook, new Dictionary<string, ResolvedTicket>(), SubmissionRunMode.Pending);
+
+        Assert.Empty(platform.SaveAttempts);
+        Assert.Single(platform.AcceptanceAttempts);
+        Assert.Equal(SubmissionState.Succeeded, row.State);
+        Assert.Equal(TicketAcceptanceState.Succeeded, row.AcceptanceState);
+    }
+
+    [Fact]
+    public async Task ValidateAsync_WhenAssigneeDiffersFromCurrentUser_MarksRowAsValidationFailed()
+    {
+        var clock = new FakeClock(DateTimeOffset.UtcNow);
+        var repository = new FakeWorkbookRepository();
+        var journal = new InMemoryJournal();
+        var platform = new FakePlatformClient(clock) { DisplayName = "其他受理人" };
+        var row = CreateRow(2, "1");
+        var workbook = new WorkbookLoadResult("C:\\test.xlsx", "Sheet1", [row], null);
+        var queue = new SubmissionQueue(repository, journal, platform, clock, TimeSpan.Zero);
+
+        var resolved = await queue.ValidateAsync(workbook);
+
+        Assert.Empty(resolved);
+        Assert.Equal(SubmissionState.ValidationFailed, row.State);
+        Assert.Contains("指定受理人", row.FailureReason);
+        Assert.Contains("当前登录人", row.FailureReason);
     }
 
     [Fact]
@@ -225,6 +320,7 @@ public sealed class SubmissionQueueTests
         Discoverer = "发现人",
         Applicant = "申请人",
         EventType = "数据疑问",
+        ProcessingRemark = "已处理",
         SystemName = "网签合同",
         Assignee = "受理人",
         Description = $"描述{sequence}",
@@ -364,9 +460,15 @@ public sealed class SubmissionQueueTests
         public string? FailSequence { get; init; }
         public string? UnknownSequence { get; init; }
         public string? SessionExpirySequence { get; init; }
+        public string? AcceptanceFailSequence { get; init; }
+        public string? AcceptanceUnknownSequence { get; init; }
+        public string DisplayName { get; init; } = "测试用户";
         public List<DateTimeOffset> SaveAttempts { get; } = [];
         public List<DateTimeOffset> VerificationAttempts { get; } = [];
+        public List<DateTimeOffset> AcceptanceAttempts { get; } = [];
         public HashSet<string> ExistingIds { get; } = [];
+        public HashSet<string> AcceptedIds { get; } = [];
+        public Dictionary<string, string> CaseSequences { get; } = [];
         public event EventHandler? SessionExpired
         {
             add { }
@@ -374,7 +476,7 @@ public sealed class SubmissionQueueTests
         }
 
         public Task<PlatformSessionStatus> CheckSessionAsync(CancellationToken cancellationToken = default) =>
-            Task.FromResult(new PlatformSessionStatus(true, true, "测试用户", "已登录"));
+            Task.FromResult(new PlatformSessionStatus(true, true, DisplayName, "已登录"));
 
         public Task<ResolvedTicket> ResolveTicketAsync(
             TicketRow row,
@@ -406,6 +508,7 @@ public sealed class SubmissionQueueTests
             }
 
             ExistingIds.Add(caseId);
+            CaseSequences[caseId] = ticket.Source.Sequence;
             return Task.FromResult(new SaveTicketResult(true, "{}"));
         }
 
@@ -418,6 +521,36 @@ public sealed class SubmissionQueueTests
                 ExistingIds.Contains(caseId),
                 ExistingIds.Contains(caseId) ? "已创建" : "未创建"));
         }
+
+        public Task<AcceptanceResult> AcceptAndHandleAsync(
+            string caseId,
+            string processingRemark,
+            CancellationToken cancellationToken = default)
+        {
+            AcceptanceAttempts.Add(_clock.UtcNow);
+            CaseSequences.TryGetValue(caseId, out var sequence);
+            if (!string.IsNullOrWhiteSpace(AcceptanceUnknownSequence) &&
+                sequence == AcceptanceUnknownSequence)
+            {
+                throw new SubmissionOutcomeUnknownException("受理并处理结果不确定");
+            }
+
+            if (!string.IsNullOrWhiteSpace(AcceptanceFailSequence) &&
+                sequence == AcceptanceFailSequence)
+            {
+                return Task.FromResult(new AcceptanceResult(false, "平台明确返回受理并处理失败"));
+            }
+
+            AcceptedIds.Add(caseId);
+            return Task.FromResult(new AcceptanceResult(true, "已离开未受理列表"));
+        }
+
+        public Task<AcceptanceResult> VerifyAcceptedAndHandledAsync(
+            string caseId,
+            CancellationToken cancellationToken = default) =>
+            Task.FromResult(AcceptedIds.Contains(caseId)
+                ? new AcceptanceResult(true, "已离开未受理列表")
+                : new AcceptanceResult(false, "办件仍处于已创建状态"));
 
         public Task<PendingTicketQueryResult> QueryPendingAsync(
             string title,

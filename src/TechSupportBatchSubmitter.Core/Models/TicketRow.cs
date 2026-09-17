@@ -9,6 +9,9 @@ public sealed class TicketRow : INotifyPropertyChanged
     private SubmissionState _state;
     private DateTimeOffset? _submittedAt;
     private string? _failureReason;
+    private TicketAcceptanceState _acceptanceState;
+    private DateTimeOffset? _acceptedAt;
+    private string? _acceptanceFailureReason;
     private TicketCloseState _closeState;
     private DateTimeOffset? _closedAt;
     private string? _closeFailureReason;
@@ -19,6 +22,10 @@ public sealed class TicketRow : INotifyPropertyChanged
     public required string Discoverer { get; init; }
     public required string Applicant { get; init; }
     public required string EventType { get; init; }
+    /// <summary>平台处理类型：运营或运维。</summary>
+    public string ProcessingType { get; init; } = "运营";
+    /// <summary>提交后“受理并处理”环节写入平台的处理说明。</summary>
+    public string ProcessingRemark { get; init; } = string.Empty;
     public required string SystemName { get; init; }
     public required string Assignee { get; init; }
     public required string Description { get; init; }
@@ -55,6 +62,32 @@ public sealed class TicketRow : INotifyPropertyChanged
     {
         get => _failureReason;
         set => SetField(ref _failureReason, value);
+    }
+
+    public TicketAcceptanceState AcceptanceState
+    {
+        get => _acceptanceState;
+        set
+        {
+            if (SetField(ref _acceptanceState, value))
+            {
+                OnPropertyChanged(nameof(AcceptanceStateText));
+            }
+        }
+    }
+
+    public string AcceptanceStateText => AcceptanceState.ToDisplayText();
+
+    public DateTimeOffset? AcceptedAt
+    {
+        get => _acceptedAt;
+        set => SetField(ref _acceptedAt, value);
+    }
+
+    public string? AcceptanceFailureReason
+    {
+        get => _acceptanceFailureReason;
+        set => SetField(ref _acceptanceFailureReason, value);
     }
 
     public TicketCloseState CloseState

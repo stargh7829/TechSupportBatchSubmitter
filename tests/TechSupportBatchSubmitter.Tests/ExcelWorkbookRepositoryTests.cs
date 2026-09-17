@@ -29,16 +29,58 @@ public sealed class ExcelWorkbookRepositoryTests : IDisposable
 
         using var workbook = new XLWorkbook(path);
         var worksheet = workbook.Worksheet("Sheet1");
-        Assert.Equal("技术支持编号", worksheet.Cell(1, 10).GetString());
-        Assert.Equal("提交状态", worksheet.Cell(1, 11).GetString());
-        Assert.Equal("实际提交时间", worksheet.Cell(1, 12).GetString());
-        Assert.Equal("失败原因", worksheet.Cell(1, 13).GetString());
-        Assert.Equal("关闭状态", worksheet.Cell(1, 14).GetString());
-        Assert.Equal("实际关闭时间", worksheet.Cell(1, 15).GetString());
-        Assert.Equal("关闭失败原因", worksheet.Cell(1, 16).GetString());
-        Assert.NotEqual(XLBorderStyleValues.None, worksheet.Cell(2, 16).Style.Border.BottomBorder);
+        Assert.Equal("处理类型", worksheet.Cell(1, 10).GetString());
+        Assert.Equal("处理说明", worksheet.Cell(1, 11).GetString());
+        Assert.Equal("技术支持编号", worksheet.Cell(1, 12).GetString());
+        Assert.Equal("提交状态", worksheet.Cell(1, 13).GetString());
+        Assert.Equal("实际提交时间", worksheet.Cell(1, 14).GetString());
+        Assert.Equal("失败原因", worksheet.Cell(1, 15).GetString());
+        Assert.Equal("受理并处理状态", worksheet.Cell(1, 16).GetString());
+        Assert.Equal("受理并处理完成时间", worksheet.Cell(1, 17).GetString());
+        Assert.Equal("受理并处理失败原因", worksheet.Cell(1, 18).GetString());
+        Assert.Equal("关闭状态", worksheet.Cell(1, 19).GetString());
+        Assert.Equal("实际关闭时间", worksheet.Cell(1, 20).GetString());
+        Assert.Equal("关闭失败原因", worksheet.Cell(1, 21).GetString());
+        Assert.Equal("运营", worksheet.Cell(2, 10).GetString());
+        Assert.NotEqual(XLBorderStyleValues.None, worksheet.Cell(2, 21).Style.Border.BottomBorder);
         Assert.Equal(116, result.Diagnostics.TotalRows);
-        Assert.True(result.Diagnostics.PendingRows > 0);
+        Assert.Equal(116, result.Diagnostics.ValidationFailedRows);
+    }
+
+    [Fact]
+    public async Task PrepareAndLoad_ReadsProcessingTypeFromLatestTemplate()
+    {
+        var path = Path.Combine(_tempDirectory, "latest-template.xlsx");
+        using (var workbook = new XLWorkbook())
+        {
+            var worksheet = workbook.AddWorksheet("Sheet1");
+            var headers = ExcelWorkbookRepository.RequiredHeaders
+                .Append(ExcelWorkbookRepository.ProcessingTypeHeader)
+                .Append(ExcelWorkbookRepository.ProcessingRemarkHeader)
+                .ToArray();
+            for (var index = 0; index < headers.Length; index++)
+            {
+                worksheet.Cell(1, index + 1).Value = headers[index];
+            }
+
+            worksheet.Cell(2, 1).Value = "1";
+            worksheet.Cell(2, 2).Value = "标题";
+            worksheet.Cell(2, 3).Value = "发现人";
+            worksheet.Cell(2, 4).Value = "申请人";
+            worksheet.Cell(2, 5).Value = "数据疑问";
+            worksheet.Cell(2, 6).Value = "网签合同";
+            worksheet.Cell(2, 7).Value = "受理人";
+            worksheet.Cell(2, 8).Value = "描述";
+            worksheet.Cell(2, 9).Value = "2026/6/15";
+            worksheet.Cell(2, 10).Value = "运维";
+            worksheet.Cell(2, 11).Value = "已处理";
+            workbook.SaveAs(path);
+        }
+
+        var result = await new ExcelWorkbookRepository().PrepareAndLoadAsync(path);
+
+        Assert.Equal("运维", Assert.Single(result.Rows).ProcessingType);
+        Assert.Equal("已处理", Assert.Single(result.Rows).ProcessingRemark);
     }
 
     [Fact]
@@ -52,6 +94,9 @@ public sealed class ExcelWorkbookRepositoryTests : IDisposable
         row.State = SubmissionState.Succeeded;
         row.SubmittedAt = new DateTimeOffset(2026, 6, 15, 15, 30, 0, TimeSpan.FromHours(8));
         row.FailureReason = null;
+        row.AcceptanceState = TicketAcceptanceState.Succeeded;
+        row.AcceptedAt = new DateTimeOffset(2026, 6, 15, 15, 31, 0, TimeSpan.FromHours(8));
+        row.AcceptanceFailureReason = null;
         row.CloseState = TicketCloseState.Succeeded;
         row.ClosedAt = new DateTimeOffset(2026, 6, 15, 16, 30, 0, TimeSpan.FromHours(8));
         row.CloseFailureReason = null;
@@ -62,6 +107,8 @@ public sealed class ExcelWorkbookRepositoryTests : IDisposable
         Assert.Equal("20609999", reloaded.Rows[0].TicketNumber);
         Assert.Equal(SubmissionState.Succeeded, reloaded.Rows[0].State);
         Assert.NotNull(reloaded.Rows[0].SubmittedAt);
+        Assert.Equal(TicketAcceptanceState.Succeeded, reloaded.Rows[0].AcceptanceState);
+        Assert.NotNull(reloaded.Rows[0].AcceptedAt);
         Assert.Equal(TicketCloseState.Succeeded, reloaded.Rows[0].CloseState);
         Assert.NotNull(reloaded.Rows[0].ClosedAt);
     }

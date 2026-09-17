@@ -7,7 +7,10 @@ public enum SubmissionState
     Submitting,
     PendingVerification,
     Succeeded,
-    Failed
+    Failed,
+    // Append new values so existing SQLite journal records retain their meaning.
+    PendingAcceptance,
+    PendingAcceptanceVerification
 }
 
 public static class SubmissionStateExtensions
@@ -20,6 +23,8 @@ public static class SubmissionStateExtensions
         SubmissionState.PendingVerification => "待核验",
         SubmissionState.Succeeded => "成功",
         SubmissionState.Failed => "失败",
+        SubmissionState.PendingAcceptance => "待受理并处理",
+        SubmissionState.PendingAcceptanceVerification => "受理并处理待核验",
         _ => "待提交"
     };
 
@@ -30,6 +35,8 @@ public static class SubmissionStateExtensions
         "待核验" => SubmissionState.PendingVerification,
         "成功" => SubmissionState.Succeeded,
         "失败" => SubmissionState.Failed,
+        "待受理并处理" => SubmissionState.PendingAcceptance,
+        "受理并处理待核验" => SubmissionState.PendingAcceptanceVerification,
         _ => SubmissionState.Pending
     };
 }

@@ -6,6 +6,10 @@ namespace TechSupportBatchSubmitter.Core.Services;
 
 public sealed class ExcelWorkbookRepository : IWorkbookRepository
 {
+    public const string ProcessingTypeHeader = "处理类型";
+    public const string ProcessingRemarkHeader = "处理说明";
+    public static readonly string[] ProcessingTypeValues = ["运营", "运维"];
+
     public static readonly string[] RequiredHeaders =
     [
         "序号",
@@ -25,6 +29,9 @@ public sealed class ExcelWorkbookRepository : IWorkbookRepository
         "提交状态",
         "实际提交时间",
         "失败原因",
+        "受理并处理状态",
+        "受理并处理完成时间",
+        "受理并处理失败原因",
         "关闭状态",
         "实际关闭时间",
         "关闭失败原因"
@@ -120,6 +127,21 @@ public sealed class ExcelWorkbookRepository : IWorkbookRepository
                 }
 
                 worksheet.Cell(row.ExcelRowNumber, headers["失败原因"]).Value = row.FailureReason ?? string.Empty;
+                worksheet.Cell(row.ExcelRowNumber, headers["受理并处理状态"]).Value =
+                    row.AcceptanceState.ToDisplayText();
+                var acceptedAtCell = worksheet.Cell(row.ExcelRowNumber, headers["受理并处理完成时间"]);
+                if (row.AcceptedAt is { } acceptedAt)
+                {
+                    acceptedAtCell.Value = acceptedAt.LocalDateTime;
+                    acceptedAtCell.Style.DateFormat.Format = "yyyy/m/d h:mm:ss";
+                }
+                else
+                {
+                    acceptedAtCell.Clear(XLClearOptions.Contents);
+                }
+
+                worksheet.Cell(row.ExcelRowNumber, headers["受理并处理失败原因"]).Value =
+                    row.AcceptanceFailureReason ?? string.Empty;
                 worksheet.Cell(row.ExcelRowNumber, headers["关闭状态"]).Value = row.CloseState.ToDisplayText();
                 var closedAtCell = worksheet.Cell(row.ExcelRowNumber, headers["实际关闭时间"]);
                 if (row.ClosedAt is { } closedAt)
@@ -173,6 +195,8 @@ public sealed class ExcelWorkbookRepository : IWorkbookRepository
             var discoverer = GetCellText(worksheet, rowNumber, headers["发现人"]);
             var applicant = GetCellText(worksheet, rowNumber, headers["申请人"]);
             var eventType = GetCellText(worksheet, rowNumber, headers["事件类型"]);
+            var processingType = GetCellText(worksheet, rowNumber, headers[ProcessingTypeHeader]);
+            var processingRemark = GetCellText(worksheet, rowNumber, headers[ProcessingRemarkHeader]);
             var systemName = GetCellText(worksheet, rowNumber, headers["所属系统"]);
             var assignee = GetCellText(worksheet, rowNumber, headers["指定受理人"]);
             var originalDate = GetCellText(worksheet, rowNumber, headers["日期"]);
@@ -180,13 +204,31 @@ public sealed class ExcelWorkbookRepository : IWorkbookRepository
             var stateText = GetOptionalCellText(worksheet, rowNumber, headers, "提交状态");
             var submittedAt = ReadOptionalDateTime(worksheet, rowNumber, headers, "实际提交时间");
             var failureReason = GetOptionalCellText(worksheet, rowNumber, headers, "失败原因");
+            var acceptanceStateText = GetOptionalCellText(worksheet, rowNumber, headers, "受理并处理状态");
+            var acceptedAt = ReadOptionalDateTime(worksheet, rowNumber, headers, "受理并处理完成时间");
+            var acceptanceFailureReason = GetOptionalCellText(
+                worksheet,
+                rowNumber,
+                headers,
+                "受理并处理失败原因");
             var closeStateText = GetOptionalCellText(worksheet, rowNumber, headers, "关闭状态");
             var closedAt = ReadOptionalDateTime(worksheet, rowNumber, headers, "实际关闭时间");
             var closeFailureReason = GetOptionalCellText(worksheet, rowNumber, headers, "关闭失败原因");
 
-            var state = !string.IsNullOrWhiteSpace(ticketNumber)
-                ? SubmissionState.Succeeded
-                : SubmissionStateExtensions.FromDisplayText(stateText);
+            var acceptanceState = TicketAcceptanceStateExtensions.FromDisplayText(acceptanceStateText) ??
+                (acceptedAt is not null ? TicketAcceptanceState.Succeeded : TicketAcceptanceState.NotStarted);
+            var state = SubmissionStateExtensions.FromDisplayText(stateText);
+            if (!string.IsNullOrWhiteSpace(ticketNumber))
+            {
+                state = acceptanceState switch
+                {
+                    TicketAcceptanceState.Processing or TicketAcceptanceState.Failed =>
+                        SubmissionState.PendingAcceptance,
+                    TicketAcceptanceState.PendingVerification =>
+                        SubmissionState.PendingAcceptanceVerification,
+                    _ => SubmissionState.Succeeded
+                };
+            }
 
             var ticketRow = new TicketRow
             {
@@ -196,6 +238,8 @@ public sealed class ExcelWorkbookRepository : IWorkbookRepository
                 Discoverer = discoverer,
                 Applicant = applicant,
                 EventType = eventType,
+                ProcessingType = processingType,
+                ProcessingRemark = processingRemark,
                 SystemName = systemName,
                 Assignee = assignee,
                 Description = description,
@@ -215,6 +259,9 @@ public sealed class ExcelWorkbookRepository : IWorkbookRepository
                 State = state,
                 SubmittedAt = submittedAt,
                 FailureReason = failureReason,
+                AcceptanceState = acceptanceState,
+                AcceptedAt = acceptedAt,
+                AcceptanceFailureReason = acceptanceFailureReason,
                 CloseState = TicketCloseStateExtensions.FromDisplayText(closeStateText) ??
                     (closedAt is not null ? TicketCloseState.Succeeded : TicketCloseState.Ready),
                 ClosedAt = closedAt,
@@ -316,6 +363,38 @@ public sealed class ExcelWorkbookRepository : IWorkbookRepository
         var headers = ReadHeaderMap(worksheet);
         var nextColumn = Math.Max(worksheet.Row(1).LastCellUsed()?.Address.ColumnNumber ?? 0, RequiredHeaders.Length);
         var sourceHeader = worksheet.Cell(1, headers["日期"]);
+
+        if (!headers.ContainsKey(ProcessingTypeHeader))
+        {
+            nextColumn++;
+            var processingTypeCell = worksheet.Cell(1, nextColumn);
+            processingTypeCell.Value = ProcessingTypeHeader;
+            processingTypeCell.Style = sourceHeader.Style;
+            processingTypeCell.Style.Alignment.WrapText = true;
+            headers[ProcessingTypeHeader] = nextColumn;
+
+            // 旧模板沿用平台原有默认值，已有数据行可直接提交；新模板可显式填写“运营/运维”。
+            var lastRow = worksheet.LastRowUsed()?.RowNumber() ?? 1;
+            for (var rowNumber = 2; rowNumber <= lastRow; rowNumber++)
+            {
+                var hasData = RequiredHeaders.Any(header =>
+                    !string.IsNullOrWhiteSpace(worksheet.Cell(rowNumber, headers[header]).GetFormattedString()));
+                if (hasData && worksheet.Cell(rowNumber, nextColumn).IsEmpty())
+                {
+                    worksheet.Cell(rowNumber, nextColumn).Value = "运营";
+                }
+            }
+        }
+
+        if (!headers.ContainsKey(ProcessingRemarkHeader))
+        {
+            nextColumn++;
+            var processingRemarkCell = worksheet.Cell(1, nextColumn);
+            processingRemarkCell.Value = ProcessingRemarkHeader;
+            processingRemarkCell.Style = sourceHeader.Style;
+            processingRemarkCell.Style.Alignment.WrapText = true;
+            headers[ProcessingRemarkHeader] = nextColumn;
+        }
 
         foreach (var resultHeader in ResultHeaders)
         {

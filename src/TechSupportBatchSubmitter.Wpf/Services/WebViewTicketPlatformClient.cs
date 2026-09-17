@@ -199,10 +199,21 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
         string caseId,
         CancellationToken cancellationToken = default)
     {
+        // 已在技术支持平台“事件申请”页实测：name=processingType，运维=1，运营=2。
+        // 请勿猜测字段名或字段值；未知值必须终止提交。
+        var processingTypeCode = ticket.Source.ProcessingType.Trim() switch
+        {
+            "运维" => "1",
+            "运营" => "2",
+            _ => throw new PlatformProtocolException(
+                $"处理类型“{ticket.Source.ProcessingType}”未在平台事件申请页得到验证，已停止提交。")
+        };
         var payload = new
         {
             case_id = caseId,
             saveFlag = "1",
+            // 平台表单的实际字段：processingType（1=运维，2=运营）。
+            processingType = processingTypeCode,
             case_title = ticket.Source.Title,
             proposer_name = ticket.Discoverer.Text,
             proposer_id = ticket.Discoverer.Id,
@@ -221,12 +232,13 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
             (async () => {
                 const payload = {{payloadJson}};
                 try {
+                    const body = new URLSearchParams(payload);
                     const response = await fetch("/xzsw/zcaseManager/saveCase.do", {
                         method: "POST",
                         cache: "no-store",
                         credentials: "same-origin",
                         headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" },
-                        body: new URLSearchParams(payload)
+                        body
                     });
                     const text = await response.text();
                     if (response.url?.includes("172.18.75.21") || text.includes('"sessionstatus":"timeout"')) {
@@ -305,6 +317,275 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
             """;
 
         return await ExecuteAsync<VerificationResult>(script, cancellationToken);
+    }
+
+    public async Task<AcceptanceResult> AcceptAndHandleAsync(
+        string caseId,
+        string processingRemark,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(caseId) || !caseId.All(char.IsDigit))
+        {
+            throw new InvalidDataException("技术支持编号无效，无法执行受理并处理。");
+        }
+
+        if (string.IsNullOrWhiteSpace(processingRemark))
+        {
+            throw new InvalidDataException("处理说明不能为空，无法执行受理并处理。");
+        }
+
+        var inputJson = JsonSerializer.Serialize(new
+        {
+            caseId,
+            processingRemark = processingRemark.Trim(),
+            formPath = SupportPlatformRoutes.BuildAcceptAndHandleFormPath(caseId)
+        });
+        var script =
+            $$"""
+            (async () => {
+                const input = {{inputJson}};
+                let saveIssued = false;
+                let acceptanceFrame = null;
+                const sessionTimeout = (text, url) =>
+                    url?.includes("172.18.75.21") ||
+                    String(text || "").includes('"sessionstatus":"timeout"');
+                // 平台的受理页不是事件申请保存后的自动跳转页。使用同会话 iframe
+                // 实际打开受理页，避免以 XHR/fetch 方式读取时被平台返回当前工作台页面。
+                const loadAcceptancePage = (formPath) => new Promise(resolve => {
+                    const frame = document.createElement("iframe");
+                    frame.setAttribute("aria-hidden", "true");
+                    frame.tabIndex = -1;
+                    frame.style.cssText = "position:fixed;width:1px;height:1px;left:-10000px;top:-10000px;border:0;visibility:hidden";
+                    let settled = false;
+                    const finish = value => {
+                        if (settled) return;
+                        settled = true;
+                        clearTimeout(timeout);
+                        resolve({ ...value, frame });
+                    };
+                    const timeout = setTimeout(() => finish({
+                        error: "打开受理并处理页面超时"
+                    }), 20000);
+                    frame.addEventListener("load", () => {
+                        try {
+                            const loadedDocument = frame.contentDocument;
+                            const loadedWindow = frame.contentWindow;
+                            if (!loadedDocument || !loadedWindow) {
+                                finish({ error: "受理并处理页面加载后无法读取页面内容" });
+                                return;
+                            }
+                            finish({
+                                documentValue: loadedDocument,
+                                pageWindow: loadedWindow,
+                                pageUrl: String(loadedWindow.location.href || ""),
+                                pageTitle: String(loadedDocument.title || ""),
+                                pageText: String(loadedDocument.body?.innerText || "")
+                            });
+                        } catch (error) {
+                            finish({ error: `受理并处理页面无法读取：${String(error?.message || error)}` });
+                        }
+                    }, { once: true });
+                    frame.src = formPath;
+                    (document.body || document.documentElement).appendChild(frame);
+                });
+                const appendControl = (body, control) => {
+                    const name = String(control.name || "").trim();
+                    if (!name || control.disabled) return;
+                    const type = String(control.type || "").toLowerCase();
+                    if ((type === "checkbox" || type === "radio") && !control.checked) return;
+                    body.append(name, String(control.value ?? ""));
+                };
+
+                try {
+                    const loaded = await loadAcceptancePage(input.formPath);
+                    acceptanceFrame = loaded.frame;
+                    const cleanupFrame = () => {
+                        acceptanceFrame?.remove();
+                        acceptanceFrame = null;
+                    };
+                    if (loaded.error) {
+                        return {
+                            ok: false,
+                            kind: "protocol",
+                            error: loaded.error
+                        };
+                    }
+                    if (sessionTimeout(loaded.pageText, loaded.pageUrl)) {
+                        cleanupFrame();
+                        return { ok: false, kind: "session", error: "技术支持系统登录已失效" };
+                    }
+
+                    const documentValue = loaded.documentValue;
+                    const form = documentValue.querySelector("form");
+                    if (!form || !documentValue.body?.innerText?.includes("事件受理并处理")) {
+                        cleanupFrame();
+                        return {
+                            ok: false,
+                            kind: "protocol",
+                            error: `平台返回的页面不是受理并处理表单（地址：${loaded.pageUrl || "未知"}；标题：${loaded.pageTitle || "无"}），请检查登录身份或平台页面是否变化`
+                        };
+                    }
+
+                    const required = [
+                        "case_id",
+                        "flag",
+                        "handle_id",
+                        "action_type",
+                        "case_creator_id",
+                        "proposer_id",
+                        "processingType",
+                        "type_id",
+                        "system",
+                        "remark"
+                    ];
+                    const missing = required.filter(name =>
+                        !form.querySelector(`[name="${name}"]`));
+                    if (missing.length > 0) {
+                        cleanupFrame();
+                        return {
+                            ok: false,
+                            kind: "protocol",
+                            error: `受理并处理表单字段发生变化：${missing.join("、")}`
+                        };
+                    }
+
+                    const returnedCaseId = String(
+                        form.querySelector('[name="case_id"]')?.value || "").trim();
+                    if (returnedCaseId !== input.caseId) {
+                        cleanupFrame();
+                        return {
+                            ok: false,
+                            kind: "protocol",
+                            error: "受理并处理表单返回的技术支持编号不匹配，已停止操作"
+                        };
+                    }
+
+                    const body = new URLSearchParams();
+                    for (const control of form.querySelectorAll("input[name], select[name], textarea[name]")) {
+                        appendControl(body, control);
+                    }
+                    body.set("remark", input.processingRemark);
+
+                    saveIssued = true;
+                    const saveResponse = await loaded.pageWindow.fetch("/xzsw/zcaseManager/saveAcceptAndHandleCase.do", {
+                        method: "POST",
+                        cache: "no-store",
+                        credentials: "same-origin",
+                        headers: {
+                            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+                            "X-Requested-With": "XMLHttpRequest"
+                        },
+                        body
+                    });
+                    const saveText = await saveResponse.text();
+                    cleanupFrame();
+                    if (sessionTimeout(saveText, saveResponse.url)) {
+                        return {
+                            ok: false,
+                            kind: "unknown",
+                            error: "受理并处理请求发出后登录失效，结果需要人工核验"
+                        };
+                    }
+                    if (!saveResponse.ok) {
+                        return {
+                            ok: false,
+                            kind: "unknown",
+                            error: `受理并处理保存返回 HTTP ${saveResponse.status}，结果需要人工核验`
+                        };
+                    }
+
+                    let payload = null;
+                    try {
+                        payload = JSON.parse(saveText);
+                    } catch {
+                    }
+                    const explicitFailure =
+                        payload?.success === false ||
+                        payload?.result === false ||
+                        payload?.status === false ||
+                        /保存失败|操作失败|处理失败/.test(saveText);
+                    if (explicitFailure) {
+                        return {
+                            ok: true,
+                            data: {
+                                isAccepted: false,
+                                message: "平台明确返回受理并处理失败"
+                            }
+                        };
+                    }
+
+                    return {
+                        ok: true,
+                        data: {
+                            isAccepted: true,
+                            message: "受理并处理保存请求已返回"
+                        }
+                    };
+                } catch (error) {
+                    return {
+                        ok: false,
+                        kind: saveIssued ? "unknown" : "protocol",
+                        error: saveIssued
+                            ? `受理并处理保存后结果不明确：${String(error?.message || error)}`
+                            : `受理并处理前置请求失败：${String(error?.message || error)}`
+                    };
+                } finally {
+                    acceptanceFrame?.remove();
+                }
+            })()
+            """;
+
+        var saved = await ExecuteAsync<AcceptanceResult>(script, cancellationToken);
+        if (!saved.IsAccepted)
+        {
+            return saved;
+        }
+
+        for (var attempt = 0; attempt < 6; attempt++)
+        {
+            var verification = await VerifyAcceptedAndHandledAsync(caseId, cancellationToken);
+            if (verification.IsAccepted)
+            {
+                return verification;
+            }
+
+            if (attempt < 5)
+            {
+                await Task.Delay(TimeSpan.FromMilliseconds(500), cancellationToken);
+            }
+        }
+
+        throw new SubmissionOutcomeUnknownException(
+            "受理并处理保存请求已发出，但办件仍处于已创建状态，结果需要人工核验。");
+    }
+
+    public async Task<AcceptanceResult> VerifyAcceptedAndHandledAsync(
+        string caseId,
+        CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(caseId) || !caseId.All(char.IsDigit))
+        {
+            throw new InvalidDataException("技术支持编号无效，无法核验受理并处理结果。");
+        }
+
+        var query = await QueryPendingAsync(
+            new PendingTicketQueryCriteria(Title: string.Empty, CaseId: caseId),
+            cancellationToken);
+        var item = query.Items.FirstOrDefault(ticket =>
+            string.Equals(ticket.CaseId, caseId, StringComparison.Ordinal));
+        if (item is null && query.Total == 0)
+        {
+            return new AcceptanceResult(true, "办件已离开未受理列表");
+        }
+
+        var status = item?.StatusName?.Trim() ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(status) &&
+            !string.Equals(status, "已创建", StringComparison.Ordinal))
+        {
+            return new AcceptanceResult(true, $"办件状态已更新为“{status}”");
+        }
+
+        return new AcceptanceResult(false, "办件仍处于已创建状态");
     }
 
     public async Task<PendingTicketQueryResult> QueryPendingAsync(

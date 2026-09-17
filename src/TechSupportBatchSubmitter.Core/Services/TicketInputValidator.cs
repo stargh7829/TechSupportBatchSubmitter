@@ -16,6 +16,8 @@ public static class TicketInputValidator
         AddIfMissing(missing, "发现人", row.Discoverer);
         AddIfMissing(missing, "申请人", row.Applicant);
         AddIfMissing(missing, "事件类型", row.EventType);
+        AddIfMissing(missing, "处理类型", row.ProcessingType);
+        AddIfMissing(missing, "处理说明", row.ProcessingRemark);
         AddIfMissing(missing, "所属系统", row.SystemName);
         AddIfMissing(missing, "指定受理人", row.Assignee);
         AddIfMissing(missing, "描述", row.Description);
@@ -23,6 +25,12 @@ public static class TicketInputValidator
         if (missing.Count > 0)
         {
             errors.Add($"必填字段为空：{string.Join("、", missing)}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(row.ProcessingType) &&
+            !ExcelWorkbookRepository.ProcessingTypeValues.Contains(row.ProcessingType.Trim(), StringComparer.Ordinal))
+        {
+            errors.Add("处理类型无效，只能填写“运营”或“运维”");
         }
 
         if (row.Title.Trim().Length > MaxTitleLength)

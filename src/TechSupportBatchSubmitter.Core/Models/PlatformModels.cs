@@ -13,6 +13,40 @@ public sealed record SaveTicketResult(bool RequestAccepted, string? ResponseText
 
 public sealed record VerificationResult(bool IsCreated, string Message);
 
+public enum TicketAcceptanceState
+{
+    NotStarted,
+    Processing,
+    Succeeded,
+    Failed,
+    PendingVerification
+}
+
+public static class TicketAcceptanceStateExtensions
+{
+    public static string ToDisplayText(this TicketAcceptanceState state) => state switch
+    {
+        TicketAcceptanceState.NotStarted => "未执行",
+        TicketAcceptanceState.Processing => "处理中",
+        TicketAcceptanceState.Succeeded => "成功",
+        TicketAcceptanceState.Failed => "失败",
+        TicketAcceptanceState.PendingVerification => "待核验",
+        _ => string.Empty
+    };
+
+    public static TicketAcceptanceState? FromDisplayText(string? text) => text?.Trim() switch
+    {
+        "未执行" => TicketAcceptanceState.NotStarted,
+        "处理中" => TicketAcceptanceState.Processing,
+        "成功" => TicketAcceptanceState.Succeeded,
+        "失败" => TicketAcceptanceState.Failed,
+        "待核验" => TicketAcceptanceState.PendingVerification,
+        _ => null
+    };
+}
+
+public sealed record AcceptanceResult(bool IsAccepted, string Message);
+
 public enum TicketCloseState
 {
     Ready,

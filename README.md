@@ -1,21 +1,26 @@
 # 技术支持批量提交工具
 
 面向目标技术支持系统的 Windows 批量提交、查询和关贴工具。程序读取技术支持
-Excel 清单，在用户登录的业务工作台/技术支持系统会话中创建工单，并在核验成功后
-立即回写技术支持编号。
+Excel 清单，在用户登录的业务工作台/技术支持系统会话中创建工单；创建核验成功后，
+立即执行“受理并处理”并回读结果。
 
 > GitHub 页面顶部、按钮和导航可能显示英文，这是 GitHub 网站自身界面，不影响程序使用。
 > 下载人员主要看本页和 [使用说明.md](使用说明.md) 即可。
 
-当前版本：`1.4.1`
+当前版本：`1.4.2`
 
 ## 立即下载
 
 普通使用人员请下载 Release 里的便携包，不要下载 GitHub 自动生成的 `Source code` 源码包：
 
-[下载 TechSupportBatchSubmitter-win-x64.zip](https://github.com/stargh7829/TechSupportBatchSubmitter/releases/download/v1.4.1/TechSupportBatchSubmitter-win-x64.zip)
+[下载 TechSupportBatchSubmitter-win-x64.zip](https://github.com/stargh7829/TechSupportBatchSubmitter/releases/download/v1.4.2/TechSupportBatchSubmitter-win-x64.zip)
 
-完整发布页：[技术支持批量提交工具 v1.4.1](https://github.com/stargh7829/TechSupportBatchSubmitter/releases/tag/v1.4.1)
+完整发布页：[技术支持批量提交工具 v1.4.2](https://github.com/stargh7829/TechSupportBatchSubmitter/releases/tag/v1.4.2)
+
+## 1.4.2 更新
+
+- 事件申请创建核验成功后，在同一登录会话中实际加载对应办件的“事件受理并处理”页面，再读取页面字段并保存处理说明。
+- 受理页返回非预期页面时，错误信息会记录实际返回地址和页面标题，便于定位平台会话或页面变化。
 
 ## 1.4.1 更新
 
@@ -32,7 +37,7 @@ Excel 清单，在用户登录的业务工作台/技术支持系统会话中创�
 
 ## 下载人员先看这里
 
-1. 下载便携包：[TechSupportBatchSubmitter-win-x64.zip](https://github.com/stargh7829/TechSupportBatchSubmitter/releases/download/v1.4.1/TechSupportBatchSubmitter-win-x64.zip)。
+1. 下载便携包：[TechSupportBatchSubmitter-win-x64.zip](https://github.com/stargh7829/TechSupportBatchSubmitter/releases/download/v1.4.2/TechSupportBatchSubmitter-win-x64.zip)。
 2. 解压 ZIP 后，双击 `TechSupportBatchSubmitter.exe` 启动。
 3. 如果提示缺少 WebView2，运行同目录下的 `MicrosoftEdgeWebview2Setup.exe`。
 4. 左侧页面登录业务工作台并进入技术支持系统。
@@ -47,13 +52,16 @@ Excel 清单，在用户登录的业务工作台/技术支持系统会话中创�
 
 - 识别唯一包含模板表头的工作表。
 - 首次读取时在 Excel 同目录创建时间戳备份。
-- 追加并维护 `技术支持编号、提交状态、实际提交时间、失败原因、关闭状态、实际关闭时间、关闭失败原因` 七列。
+- 识别导入模板末尾的 `处理类型` 字段（填写 `运营` 或 `运维`），并将该值随工单提交；旧模板自动补齐为 `运营`。
+- 读取每行必填的 `处理说明`，在事件申请创建核验成功后立即写入“受理并处理”页面。
+- 追加并维护 `技术支持编号、提交状态、实际提交时间、失败原因、受理并处理状态、受理并处理完成时间、受理并处理失败原因、关闭状态、实际关闭时间、关闭失败原因`。
 - 为表头和全部使用区域添加可见边框。
 - 已有技术支持编号的行自动跳过。
 - 动态解析人员、事件类型和所属系统的平台 ID。
 - 第一条立即提交，之后默认随机等待 30-90 秒；界面可填写固定秒数覆盖默认区间。
 - SQLite 保存候选编号、行指纹和提交状态，支持崩溃恢复。
 - 保存结果不确定时保留旧编号并标记为 `待核验`，不会换号重复提交。
+- 受理并处理结果不确定时保留原编号并标记为待核验，不会自动重复受理；明确失败的记录可在下一次运行时仅补做该步骤。
 - 登录失效、平台协议异常或 Excel 无法写入时暂停队列。
 - 支持仅重试失败项。
 - 选择 Excel 后自动读取并创建备份，开始提交时自动执行平台预检。
@@ -80,7 +88,7 @@ Excel 清单，在用户登录的业务工作台/技术支持系统会话中创�
 1. 启动 `TechSupportBatchSubmitter.exe`。
 2. 在左侧登录页面完成业务系统登录，并进入技术支持系统。
 3. 点击“选择并读取”选择 `.xlsx` 清单，程序自动读取并创建备份。
-4. 点击“开始提交”，程序先自动预检，再显示真实提交确认框。
+4. 填写每行的“处理说明”，点击“开始提交”；程序先自动预检，再显示真实提交确认框。
 5. 运行期间不要使用 Excel 打开或修改同一个清单。
 
 待受理关闭：
