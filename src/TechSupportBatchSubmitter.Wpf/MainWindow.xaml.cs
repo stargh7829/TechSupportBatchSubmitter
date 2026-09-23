@@ -75,6 +75,7 @@ public partial class MainWindow : Window
         _settings = AppSettings.LoadOrCreate(ApplicationPaths.SettingsPath);
         _logger = new SafeFileLogger(ApplicationPaths.LogDirectory);
         InitializeComponent();
+        VersionText.Text = GetDisplayVersion();
         InitializeTrayIcon();
         Rows = _rows;
         PendingTickets = _pendingTickets;
@@ -94,6 +95,18 @@ public partial class MainWindow : Window
     public ObservableCollection<CloseHistoryRecord> CloseHistory { get; }
     public IReadOnlyList<CloseTicketCauseOption> CloseCauseOptions { get; }
     public IReadOnlyList<KeyValuePair<string, string>> CloseSolveTypes { get; }
+
+    private static string GetDisplayVersion()
+    {
+        var assembly = typeof(MainWindow).Assembly;
+        var rawVersion = FileVersionInfo.GetVersionInfo(assembly.Location).ProductVersion ??
+            assembly.GetName().Version?.ToString() ??
+            "0.0.0";
+        rawVersion = rawVersion.Split('+', 2)[0];
+        return Version.TryParse(rawVersion, out var version)
+            ? $"v{version.Major}.{version.Minor}.{Math.Max(0, version.Build)}"
+            : $"v{rawVersion}";
+    }
 
     private async void Window_Loaded(object sender, RoutedEventArgs e)
     {
