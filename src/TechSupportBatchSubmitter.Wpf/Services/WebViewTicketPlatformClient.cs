@@ -100,38 +100,65 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
     {
         var script =
             """
-            (() => {
+            (async () => {
                 const url = String(location.href || "");
-                const title = String(document.title || "");
                 const body = String(document.body?.innerText || "");
-                const supportBase = __SUPPORT_BASE__;
-                const isSupportPath = url.includes("/xzsw/") &&
-                    !url.includes("/xzsw/login") &&
-                    (url.startsWith(supportBase + "/xzsw") || url.includes("://172.18.75."));
-                const supportReady = isSupportPath;
+                const isSupportPath = url.includes("/xzsw/") && !url.includes("/xzsw/login");
                 const workbenchReady =
                     url.includes("172.18.75.21") &&
                     body.includes("你好！");
                 const supportName = body.match(/公司\s*-\s*([^\s]+)/)?.[1] || "";
                 const workbenchName = body.match(/你好！\s*([^\s]+)/)?.[1] || "";
-                return {
-                    ok: true,
-                    data: {
-                        isSupportPlatformReady: supportReady,
-                        isAuthenticated: supportReady || workbenchReady,
-                        displayName: supportName || workbenchName,
-                        message: supportReady
-                            ? "技术支持系统已登录"
-                            : workbenchReady
+                if (!isSupportPath) {
+                    return {
+                        ok: true,
+                        data: {
+                            isSupportPlatformReady: false,
+                            isAuthenticated: workbenchReady,
+                            displayName: supportName || workbenchName,
+                            message: workbenchReady
                                 ? "工作台已登录，请点击“技术支持”进入系统"
                                 : "请在左侧登录页面完成登录"
-                    }
-                };
+                        }
+                    };
+                }
+
+                try {
+                    const response = await fetch("/xzsw/zcaseManager/listType.do", {
+                        method: "POST",
+                        cache: "no-store",
+                        credentials: "same-origin"
+                    });
+                    const text = await response.text();
+                    const loginResponse =
+                        response.url?.includes("/login") ||
+                        text.includes('"sessionstatus":"timeout"') ||
+                        (text.includes("登录") && text.includes("password"));
+                    const supportReady = response.ok && !loginResponse;
+                    return {
+                        ok: true,
+                        data: {
+                            isSupportPlatformReady: supportReady,
+                            isAuthenticated: supportReady,
+                            displayName: supportName || workbenchName,
+                            message: supportReady
+                                ? "技术支持系统已登录（接口核验）"
+                                : "技术支持系统登录已失效"
+                        }
+                    };
+                } catch (error) {
+                    return {
+                        ok: true,
+                        data: {
+                            isSupportPlatformReady: false,
+                            isAuthenticated: false,
+                            displayName: supportName || workbenchName,
+                            message: "技术支持系统接口核验失败"
+                        }
+                    };
+                }
             })()
-            """.Replace(
-                "__SUPPORT_BASE__",
-                JsonSerializer.Serialize(_supportPlatformUri.GetLeftPart(UriPartial.Authority)),
-                StringComparison.Ordinal);
+            """;
 
         var data = await ExecuteAsync<PlatformSessionStatus>(script, cancellationToken);
         return data;
