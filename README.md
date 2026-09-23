@@ -7,15 +7,23 @@ Excel 清单，在用户登录的业务工作台/技术支持系统会话中创�
 > GitHub 页面顶部、按钮和导航可能显示英文，这是 GitHub 网站自身界面，不影响程序使用。
 > 下载人员主要看本页和 [使用说明.md](使用说明.md) 即可。
 
-当前版本：`1.4.3`
+当前版本：`1.4.5`
 
 ## 立即下载
 
 普通使用人员请下载 Release 里的便携包，不要下载 GitHub 自动生成的 `Source code` 源码包：
 
-[下载 TechSupportBatchSubmitter-win-x64.zip](https://github.com/stargh7829/TechSupportBatchSubmitter/releases/download/v1.4.3/TechSupportBatchSubmitter-win-x64.zip)
+[下载 TechSupportBatchSubmitter-win-x64.zip](https://github.com/stargh7829/TechSupportBatchSubmitter/releases/download/v1.4.5/TechSupportBatchSubmitter-win-x64.zip)
 
-完整发布页：[技术支持批量提交工具 v1.4.3](https://github.com/stargh7829/TechSupportBatchSubmitter/releases/tag/v1.4.3)
+完整发布页：[技术支持批量提交工具 v1.4.5](https://github.com/stargh7829/TechSupportBatchSubmitter/releases/tag/v1.4.5)
+
+## 1.4.5 更新
+
+- 按技术支持系统实际页面路径识别登录状态，不再依赖 Logo 图片中的页面文字。
+
+## 1.4.4 更新
+
+- 放宽技术支持页面识别规则，兼容平台主机和 SSO 跳转地址变化，避免已登录页面继续提示未登录。
 
 ## 1.4.3 更新
 
@@ -41,7 +49,7 @@ Excel 清单，在用户登录的业务工作台/技术支持系统会话中创�
 
 ## 下载人员先看这里
 
-1. 下载便携包：[TechSupportBatchSubmitter-win-x64.zip](https://github.com/stargh7829/TechSupportBatchSubmitter/releases/download/v1.4.3/TechSupportBatchSubmitter-win-x64.zip)。
+1. 下载便携包：[TechSupportBatchSubmitter-win-x64.zip](https://github.com/stargh7829/TechSupportBatchSubmitter/releases/download/v1.4.5/TechSupportBatchSubmitter-win-x64.zip)。
 2. 解压 ZIP 后，双击 `TechSupportBatchSubmitter.exe` 启动。
 3. 如果提示缺少 WebView2，运行同目录下的 `MicrosoftEdgeWebview2Setup.exe`。
 4. 左侧页面登录业务工作台并进入技术支持系统。

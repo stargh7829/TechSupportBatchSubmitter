@@ -105,9 +105,10 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
                 const title = String(document.title || "");
                 const body = String(document.body?.innerText || "");
                 const supportBase = __SUPPORT_BASE__;
-                const supportReady =
-                    url.startsWith(supportBase + "/xzsw") &&
-                    body.includes("技术支持");
+                const isSupportPath = url.includes("/xzsw/") &&
+                    !url.includes("/xzsw/login") &&
+                    (url.startsWith(supportBase + "/xzsw") || url.includes("://172.18.75."));
+                const supportReady = isSupportPath;
                 const workbenchReady =
                     url.includes("172.18.75.21") &&
                     body.includes("你好！");
