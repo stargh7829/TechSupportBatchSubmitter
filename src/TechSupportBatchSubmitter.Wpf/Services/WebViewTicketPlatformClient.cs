@@ -104,8 +104,9 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
                 const url = String(location.href || "");
                 const title = String(document.title || "");
                 const body = String(document.body?.innerText || "");
+                const supportBase = __SUPPORT_BASE__;
                 const supportReady =
-                    url.includes("172.18.75.6:18005/xzsw") &&
+                    url.startsWith(supportBase + "/xzsw") &&
                     body.includes("技术支持");
                 const workbenchReady =
                     url.includes("172.18.75.21") &&
@@ -126,7 +127,10 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
                     }
                 };
             })()
-            """;
+            """.Replace(
+                "__SUPPORT_BASE__",
+                JsonSerializer.Serialize(_supportPlatformUri.GetLeftPart(UriPartial.Authority)),
+                StringComparison.Ordinal);
 
         var data = await ExecuteAsync<PlatformSessionStatus>(script, cancellationToken);
         return data;
@@ -183,7 +187,7 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
                 }
 
                 function detectSessionTimeout(text, url) {
-                    if (url?.includes("172.18.75.21") || text.includes('"sessionstatus":"timeout"')) {
+                    if (url?.includes("/login") || text.includes('"sessionstatus":"timeout"')) {
                         return { ok: false, kind: "session", error: "技术支持系统登录已失效" };
                     }
                     return null;
@@ -241,7 +245,7 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
                         body
                     });
                     const text = await response.text();
-                    if (response.url?.includes("172.18.75.21") || text.includes('"sessionstatus":"timeout"')) {
+                    if (response.url?.includes("/login") || text.includes('"sessionstatus":"timeout"')) {
                         return { ok: false, kind: "session", error: "技术支持系统登录已失效" };
                     }
                     if (!response.ok) {
@@ -285,7 +289,7 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
                         body: new URLSearchParams({ case_id: caseId, flag: "11" })
                     });
                     const html = await response.text();
-                    if (response.url?.includes("172.18.75.21") || html.includes('"sessionstatus":"timeout"')) {
+                    if (response.url?.includes("/login") || html.includes('"sessionstatus":"timeout"')) {
                         return { ok: false, kind: "session", error: "技术支持系统登录已失效" };
                     }
                     if (!response.ok) {
@@ -347,7 +351,7 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
                 let saveIssued = false;
                 let acceptanceFrame = null;
                 const sessionTimeout = (text, url) =>
-                    url?.includes("172.18.75.21") ||
+                    url?.includes("/login") ||
                     String(text || "").includes('"sessionstatus":"timeout"');
                 // 平台的受理页不是事件申请保存后的自动跳转页。使用同会话 iframe
                 // 实际打开受理页，避免以 XHR/fetch 方式读取时被平台返回当前工作台页面。
@@ -653,7 +657,7 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
                         body
                     });
                     const text = await response.text();
-                    if (response.url?.includes("172.18.75.21") ||
+                    if (response.url?.includes("/login") ||
                         text.includes('"sessionstatus":"timeout"')) {
                         return { sessionExpired: true };
                     }
@@ -742,7 +746,7 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
                 let saveIssued = false;
 
                 const sessionTimeout = (text, url) =>
-                    url?.includes("172.18.75.21") ||
+                    url?.includes("/login") ||
                     String(text || "").includes('"sessionstatus":"timeout"');
 
                 const readSolutionForm = async () => {
@@ -1093,7 +1097,7 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
                         })
                     });
                     const text = await response.text();
-                    if (response.url?.includes("172.18.75.21") || text.includes('"sessionstatus":"timeout"')) {
+                    if (response.url?.includes("/login") || text.includes('"sessionstatus":"timeout"')) {
                         return { ok: false, kind: "session", error: "技术支持系统登录已失效" };
                     }
                     const result = JSON.parse(text);
@@ -1162,7 +1166,7 @@ public sealed class WebViewTicketPlatformClient : ITicketPlatformClient
                         headers: { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" }
                     });
                     const text = await response.text();
-                    if (response.url?.includes("172.18.75.21") || text.includes('"sessionstatus":"timeout"')) {
+                    if (response.url?.includes("/login") || text.includes('"sessionstatus":"timeout"')) {
                         return { ok: false, kind: "session", error: "技术支持系统登录已失效" };
                     }
                     const source = JSON.parse(text);

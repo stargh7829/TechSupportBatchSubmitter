@@ -14,6 +14,8 @@ public static class InternalPlatformEndpointPolicy
             (string.Equals(uri.Host, "172.18.75.21", StringComparison.OrdinalIgnoreCase) &&
              uri.Port == 443) ||
             (string.Equals(uri.Host, "172.18.75.6", StringComparison.OrdinalIgnoreCase) &&
-             uri.Port == 18005);
+             uri.Port == 18005) ||
+            (string.Equals(uri.Host, "172.18.75.21", StringComparison.OrdinalIgnoreCase) &&
+             uri.Port == 18088);
     }
 }

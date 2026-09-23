@@ -12,7 +12,7 @@ public sealed class AppSettings
     };
 
     public string WorkbenchUrl { get; set; } = "https://172.18.75.21/index.action";
-    public string SupportPlatformUrl { get; set; } = "https://172.18.75.6:18005/xzsw/pages/mini.jsp";
+    public string SupportPlatformUrl { get; set; } = "https://172.18.75.21:18088/xzsw/pages/mini.jsp";
     public int DefaultSubmissionDelayMinSeconds { get; set; } = 30;
     public int DefaultSubmissionDelayMaxSeconds { get; set; } = 90;
     public int DefaultCloseDelayMinSeconds { get; set; } = 5;
@@ -61,7 +61,7 @@ public sealed class AppSettings
     public Uri SupportPlatformUri =>
         Uri.TryCreate(SupportPlatformUrl, UriKind.Absolute, out var uri)
             ? uri
-            : new Uri("https://172.18.75.6:18005/xzsw/pages/mini.jsp");
+            : new Uri("https://172.18.75.21:18088/xzsw/pages/mini.jsp");
 
     public DelaySchedule CreateSubmissionDelaySchedule() =>
         CreateDelaySchedule(DefaultSubmissionDelayMinSeconds, DefaultSubmissionDelayMaxSeconds, 30, 90);
@@ -85,7 +85,7 @@ public sealed class AppSettings
 
         if (string.IsNullOrWhiteSpace(SupportPlatformUrl))
         {
-            SupportPlatformUrl = "https://172.18.75.6:18005/xzsw/pages/mini.jsp";
+            SupportPlatformUrl = "https://172.18.75.21:18088/xzsw/pages/mini.jsp";
         }
 
         DefaultSubmissionDelayMinSeconds = Math.Max(1, DefaultSubmissionDelayMinSeconds);
