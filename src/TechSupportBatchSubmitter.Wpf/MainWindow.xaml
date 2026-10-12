@@ -797,7 +797,7 @@
                                              Width="58" Height="28" Padding="6,3"
                                              Margin="8,0,4,0"
                                              VerticalContentAlignment="Center"/>
-                                    <TextBlock Text="秒；空白随机 30-90 秒"
+                                    <TextBlock Text="秒；空白随机 3-10 分钟"
                                                Foreground="#657186" VerticalAlignment="Center"/>
                                 </StackPanel>
                                 <StackPanel Grid.Column="2" Orientation="Horizontal" VerticalAlignment="Center">

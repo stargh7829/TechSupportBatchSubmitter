@@ -7,7 +7,7 @@ namespace TechSupportBatchSubmitter.Core.Services;
 public sealed class SubmissionQueue : ISubmissionQueue
 {
     public static readonly DelaySchedule DefaultInterval =
-        new(TimeSpan.FromSeconds(30), TimeSpan.FromSeconds(90));
+        new(TimeSpan.FromMinutes(3), TimeSpan.FromMinutes(10));
     public static readonly TimeSpan CreationVerificationDelay = TimeSpan.FromSeconds(2);
 
     private readonly IWorkbookRepository _workbookRepository;

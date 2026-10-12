@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\TechSupportBatchSubmitter.Core\TechSupportBatchSubmitter.Core.csproj" />
+    <Compile Include="..\..\src\TechSupportBatchSubmitter.Wpf\Services\AppSettings.cs" Link="Services\AppSettings.cs" />
   </ItemGroup>
 
 </Project>

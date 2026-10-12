@@ -40,9 +40,10 @@ public sealed class SubmissionQueueTests
     }
 
     [Fact]
-    public async Task RunAsync_DefaultIntervalUsesThirtyToNinetySeconds()
+    public async Task RunAsync_DefaultIntervalUsesThreeToTenMinutes()
     {
-        var clock = new FakeClock(new DateTimeOffset(2026, 6, 15, 0, 0, 0, TimeSpan.Zero));
+        var startedAt = new DateTimeOffset(2026, 6, 15, 0, 0, 0, TimeSpan.Zero);
+        var clock = new FakeClock(startedAt);
         var workbookRepository = new FakeWorkbookRepository();
         var journal = new InMemoryJournal();
         var platform = new FakePlatformClient(clock);
@@ -60,10 +61,11 @@ public sealed class SubmissionQueueTests
         await queue.RunAsync(workbook, resolved, SubmissionRunMode.Pending);
 
         Assert.Equal(2, platform.SaveAttempts.Count);
+        Assert.Equal(startedAt, platform.SaveAttempts[0]);
         Assert.InRange(
             platform.SaveAttempts[1] - platform.SaveAttempts[0],
-            TimeSpan.FromSeconds(30),
-            TimeSpan.FromSeconds(90));
+            TimeSpan.FromMinutes(3),
+            TimeSpan.FromMinutes(10));
     }
 
     [Fact]
